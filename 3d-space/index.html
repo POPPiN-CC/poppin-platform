@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POPPiN — 3D space (Long Table)</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#111;color:#fff;overflow:hidden}
+  canvas{display:block}
+
+  #banner{position:fixed;top:12px;left:12px;right:12px;z-index:10;background:rgba(0,0,0,0.7);
+    border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5}
+  #banner b{color:#DE5B3E}
+  #banner .state-tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;
+    padding:2px 8px;border-radius:999px;margin-right:8px;background:#333}
+  body.state-inside #banner .state-tag{background:#2e7d32}
+  body.state-near #banner .state-tag{background:#a15b00}
+  body.state-far #banner .state-tag{background:#444}
+  body.state-denied #banner .state-tag{background:#7a1f1f}
+
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#111;z-index:30;font-size:14px;color:#aaa}
+
+  #dev-status{position:fixed;bottom:12px;left:12px;z-index:10;background:rgba(0,0,0,0.75);
+    border-radius:10px;padding:10px 14px;font-size:12px;font-family:Consolas,monospace;max-width:46vw}
+
+  #manual-entry{position:fixed;bottom:56px;right:12px;z-index:15;background:rgba(0,0,0,0.85);
+    border-radius:10px;padding:12px;font-size:12px;width:220px}
+  #manual-entry.hidden{display:none}
+  #manual-entry h4{margin:0 0 8px;font-size:12px;color:#DE5B3E}
+  #manual-entry input{width:100%;box-sizing:border-box;margin-bottom:6px;padding:6px;border-radius:6px;
+    border:1px solid #444;background:#1a1a1a;color:#fff;font-size:12px}
+  #manual-entry button{width:100%;margin-top:4px;padding:7px;border:0;border-radius:6px;
+    background:#DE5B3E;color:#fff;font-size:12px;cursor:pointer}
+  #manual-entry button.secondary{background:#333}
+  #manual-toggle{position:fixed;bottom:12px;right:12px;z-index:16;background:#222;border:1px solid #444;
+    color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer}
+
+  #pin-modal{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,0.6);display:flex;
+    align-items:center;justify-content:center}
+  #pin-modal.hidden{display:none}
+  #pin-modal .inner{background:#1a1a1a;border-radius:12px;padding:18px;width:280px;border:1px solid #333}
+  #pin-modal h3{margin:0 0 10px;font-size:14px}
+  #pin-modal .type-row{display:flex;gap:6px;margin-bottom:10px}
+  #pin-modal .type-row button{flex:1;padding:8px 4px;border-radius:8px;border:1px solid #444;
+    background:#222;color:#fff;font-size:12px;cursor:pointer}
+  #pin-modal .type-row button.active{border-color:#DE5B3E;background:#3a2018}
+  #pin-modal .type-row button:disabled{opacity:0.4;cursor:not-allowed}
+  #pin-modal .emoji-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  #pin-modal .emoji-row button{font-size:18px;background:#222;border:1px solid #444;border-radius:6px;
+    padding:4px 8px;cursor:pointer}
+  #pin-modal input{width:100%;box-sizing:border-box;padding:8px;border-radius:6px;border:1px solid #444;
+    background:#111;color:#fff;font-size:13px;margin-bottom:10px}
+  #pin-modal .actions{display:flex;gap:8px}
+  #pin-modal .actions button{flex:1;padding:8px;border-radius:6px;border:0;cursor:pointer;font-size:13px}
+  #pin-modal .actions .save{background:#DE5B3E;color:#fff}
+  #pin-modal .actions .cancel{background:#333;color:#fff}
+
+  #pin-info{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:12;
+    background:rgba(0,0,0,0.85);border-radius:10px;padding:10px 16px;font-size:13px;max-width:80vw;
+    text-align:center;display:none}
+</style>
+</head>
+<body class="state-waiting">
+
+<div id="loading">Loading Cornell Tech scan (Long Table)…</div>
+
+<div id="banner">
+  <span class="state-tag" id="state-tag">checking</span>
+  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Long Table POPS…</span>
+</div>
+
+<div id="dev-status">state: waiting</div>
+
+<div id="pin-info"></div>
+
+<button id="manual-toggle">🛠 Manual location</button>
+<div id="manual-entry" class="hidden">
+  <h4>Manual location (test / admin)</h4>
+  <input id="manual-lat" placeholder="Latitude, e.g. 40.755185" />
+  <input id="manual-lng" placeholder="Longitude, e.g. -73.956320" />
+  <button id="manual-check">Check this location</button>
+  <button id="manual-force" class="secondary">Force "inside" (skip check)</button>
+  <button id="manual-clear" class="secondary">Clear override</button>
+</div>
+
+<div id="pin-modal" class="hidden">
+  <div class="inner">
+    <h3>Add to this spot</h3>
+    <div class="type-row">
+      <button data-type="note" class="active">📝 Note</button>
+      <button data-type="emoji">😀 Emoji</button>
+      <button data-type="photo" disabled title="Coming soon — needs Supabase Storage wiring">📷 Photo</button>
+    </div>
+    <div class="emoji-row" id="emoji-row" style="display:none">
+      <button type="button">👍</button><button type="button">❤️</button><button type="button">😮</button>
+      <button type="button">🎉</button><button type="button">☕</button><button type="button">🌳</button>
+      <button type="button">🎵</button><button type="button">📚</button>
+    </div>
+    <input id="pin-text" placeholder="Say something about this spot…" />
+    <div class="actions">
+      <button class="cancel" id="pin-cancel">Cancel</button>
+      <button class="save" id="pin-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const NEAR_RADIUS_METERS = 100;
+const PINS_KEY = 'poppin_3d_pins_long_table';
+
+// ---------- three.js scene (always mounted, contribution is gated by state) ----------
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(3, 3, 3);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+dirLight.position.set(5, 10, 5);
+scene.add(dirLight);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+let scanRoot = null;
+const pinMarkers = [];
+
+const loader = new GLTFLoader();
+loader.load('../cornell-tech-scan.glb', (gltf) => {
+  scanRoot = gltf.scene;
+  scene.add(scanRoot);
+
+  const box = new THREE.Box3().setFromObject(scanRoot);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  scanRoot.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  camera.position.set(maxDim * 0.8, maxDim * 0.6, maxDim * 0.8);
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  document.getElementById('loading').style.display = 'none';
+  loadStoredPins();
+}, (progress) => {
+  if (progress.total) {
+    const pct = Math.round((progress.loaded / progress.total) * 100);
+    document.getElementById('loading').textContent = 'Loading Cornell Tech scan (Long Table)… ' + pct + '%';
+  }
+}, (error) => {
+  document.getElementById('loading').textContent = 'Could not load the scan. Check the console for details.';
+  console.error(error);
+});
+
+function makeNoteMarker() {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(0.03, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xDE5B3E })
+  );
+}
+
+function makeEmojiMarker(emoji) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '96px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 64, 72);
+  const texture = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+  sprite.scale.set(0.15, 0.15, 0.15);
+  return sprite;
+}
+
+function addPinToScene(pin) {
+  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text) : makeNoteMarker();
+  marker.position.set(pin.x, pin.y, pin.z);
+  marker.userData.pin = pin;
+  scene.add(marker);
+  pinMarkers.push(marker);
+}
+
+function loadStoredPins() {
+  getStoredPins().forEach(addPinToScene);
+}
+
+function getStoredPins() {
+  try {
+    return JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePin(pin) {
+  const pins = getStoredPins();
+  pins.push(pin);
+  localStorage.setItem(PINS_KEY, JSON.stringify(pins));
+}
+
+// ---------- tap handling: view an existing pin, or place a new one when allowed ----------
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const pinInfoEl = document.getElementById('pin-info');
+let pendingPoint = null;
+
+function canContribute() {
+  return currentState === 'inside';
+}
+
+function showPinInfo(marker) {
+  const pin = marker.userData.pin;
+  const when = new Date(pin.createdAt).toLocaleString();
+  pinInfoEl.textContent = (pin.type === 'emoji' ? pin.text + ' ' : '📝 ') + pin.text + '  ·  ' + when;
+  pinInfoEl.style.display = 'block';
+  clearTimeout(showPinInfo._t);
+  showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 4000);
+}
+
+function flashLocked() {
+  pinInfoEl.textContent = "You can only add to the space while you're inside the POPS.";
+  pinInfoEl.style.display = 'block';
+  clearTimeout(showPinInfo._t);
+  showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 2500);
+}
+
+function handleTap(clientX, clientY) {
+  pointer.x = (clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const markerHits = raycaster.intersectObjects(pinMarkers, true);
+  if (markerHits.length) {
+    showPinInfo(markerHits[0].object);
+    return;
+  }
+
+  if (!scanRoot) return;
+
+  if (!canContribute()) {
+    const surfaceHit = raycaster.intersectObject(scanRoot, true);
+    if (surfaceHit.length) flashLocked();
+    return;
+  }
+
+  const hits = raycaster.intersectObject(scanRoot, true);
+  if (!hits.length) return;
+  openPinModal(hits[0].point);
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  renderer.domElement.dataset.downX = e.clientX;
+  renderer.domElement.dataset.downY = e.clientY;
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+  const dx = Math.abs(e.clientX - renderer.domElement.dataset.downX);
+  const dy = Math.abs(e.clientY - renderer.domElement.dataset.downY);
+  if (dx < 4 && dy < 4) handleTap(e.clientX, e.clientY);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ---------- pin modal ----------
+
+const pinModal = document.getElementById('pin-modal');
+const pinText = document.getElementById('pin-text');
+const emojiRow = document.getElementById('emoji-row');
+let selectedType = 'note';
+
+function openPinModal(point) {
+  pendingPoint = point;
+  selectedType = 'note';
+  pinText.value = '';
+  pinText.placeholder = 'Say something about this spot…';
+  emojiRow.style.display = 'none';
+  document.querySelectorAll('#pin-modal .type-row button').forEach(b => b.classList.toggle('active', b.dataset.type === 'note'));
+  pinModal.classList.remove('hidden');
+  pinText.focus();
+}
+
+document.querySelectorAll('#pin-modal .type-row button[data-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    selectedType = btn.dataset.type;
+    document.querySelectorAll('#pin-modal .type-row button').forEach(b => b.classList.toggle('active', b === btn));
+    emojiRow.style.display = selectedType === 'emoji' ? 'flex' : 'none';
+    pinText.placeholder = selectedType === 'emoji' ? 'Pick an emoji below, or type one…' : 'Say something about this spot…';
+  });
+});
+
+emojiRow.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => { pinText.value = btn.textContent; });
+});
+
+document.getElementById('pin-cancel').addEventListener('click', () => {
+  pinModal.classList.add('hidden');
+  pendingPoint = null;
+});
+
+document.getElementById('pin-save').addEventListener('click', () => {
+  const text = pinText.value.trim();
+  if (!text || !pendingPoint) { pinModal.classList.add('hidden'); return; }
+  const pin = {
+    id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    type: selectedType,
+    text,
+    x: pendingPoint.x, y: pendingPoint.y, z: pendingPoint.z,
+    createdAt: Date.now()
+  };
+  savePin(pin);
+  addPinToScene(pin);
+  pinModal.classList.add('hidden');
+  pendingPoint = null;
+});
+
+// ---------- geolocation + geofence state ----------
+
+const bannerText = document.getElementById('banner-text');
+const stateTag = document.getElementById('state-tag');
+const devStatus = document.getElementById('dev-status');
+
+let popsPolygon = null;
+let currentState = 'waiting';
+let manualOverrideState = null; // set by the "force inside" admin backdoor
+
+const STATE_COPY = {
+  waiting: '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the Long Table POPS…',
+  denied: '<b>Location unavailable.</b> Use manual entry (bottom right) to test the space, or move somewhere your device can get a GPS fix.',
+  inside: '<b>You\'re inside.</b> Tap the model to add a note or emoji tied to that exact spot.',
+  near: '<b>You\'re close by</b> (within ' + NEAR_RADIUS_METERS + 'm) but not inside yet. Viewing only — step inside to add content.',
+  far: '<b>You\'re outside this POPS.</b> Viewing the space and what others have added so far.'
+};
+
+function applyState(state, meta) {
+  const effective = manualOverrideState || state;
+  currentState = effective;
+  document.body.className = 'state-' + effective;
+  stateTag.textContent = effective;
+  bannerText.innerHTML = STATE_COPY[effective] || '';
+  devStatus.textContent = 'state: ' + effective +
+    (meta && meta.latitude !== undefined ? '  ·  lat ' + meta.latitude.toFixed(5) + ', lng ' + meta.longitude.toFixed(5) : '') +
+    (meta && meta.accuracy !== undefined ? '  ·  ±' + Math.round(meta.accuracy) + 'm' : '') +
+    (manualOverrideState ? '  ·  manual override active' : '');
+}
+
+function decideState(lat, lng) {
+  if (!popsPolygon) return 'far';
+  const point = turf.point([lng, lat]);
+  if (turf.booleanPointInPolygon(point, popsPolygon)) return 'inside';
+  const buffered = turf.buffer(popsPolygon, NEAR_RADIUS_METERS, { units: 'meters' });
+  if (turf.booleanPointInPolygon(point, buffered)) return 'near';
+  return 'far';
+}
+
+function onGeoSuccess(pos) {
+  const { latitude, longitude, accuracy } = pos.coords;
+  applyState(decideState(latitude, longitude), { latitude, longitude, accuracy });
+}
+
+function onGeoError(err) {
+  applyState('denied', {});
+  console.warn('Geolocation error:', err && err.message);
+}
+
+function startGeolocation() {
+  if (!navigator.geolocation) { onGeoError({ message: 'Geolocation not supported' }); return; }
+  navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, {
+    enableHighAccuracy: true, timeout: 10000, maximumAge: 30000
+  });
+}
+
+fetch('../Assets/Scans/Long_Table.geojson')
+  .then(r => r.json())
+  .then(fc => { popsPolygon = fc.features[0]; startGeolocation(); })
+  .catch(() => { applyState('denied', {}); });
+
+// ---------- manual entry / admin backdoor ----------
+
+const manualPanel = document.getElementById('manual-entry');
+document.getElementById('manual-toggle').addEventListener('click', () => {
+  manualPanel.classList.toggle('hidden');
+});
+
+document.getElementById('manual-check').addEventListener('click', () => {
+  const lat = parseFloat(document.getElementById('manual-lat').value);
+  const lng = parseFloat(document.getElementById('manual-lng').value);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+  manualOverrideState = null;
+  applyState(decideState(lat, lng), { latitude: lat, longitude: lng });
+});
+
+document.getElementById('manual-force').addEventListener('click', () => {
+  manualOverrideState = 'inside';
+  applyState('inside', {});
+});
+
+document.getElementById('manual-clear').addEventListener('click', () => {
+  manualOverrideState = null;
+  applyState(currentState, {});
+  startGeolocation();
+});
+</script>
+</body>
+</html>
