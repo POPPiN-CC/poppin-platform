@@ -120,6 +120,50 @@ alter table scan_pins drop constraint scan_pins_type_check;
 alter table scan_pins add constraint scan_pins_type_check
   check (type in ('note', 'emoji', 'photo', 'recording', 'video'));
 
+-- Migration: brings the main map/list app (formerly draft/index.html) onto this same
+-- project instead of a separate one, so pops and scan_pins can eventually cross-reference.
+alter table pops add column status text check (status in ('active', 'coming_soon')) default 'coming_soon';
+
+alter table wishes add column kind text check (kind in ('activity', 'wish')) default 'wish';
+alter table wishes drop constraint wishes_pops_id_tag_key;
+alter table wishes add constraint wishes_pops_id_tag_kind_key unique (pops_id, tag, kind);
+
+-- Live activity pins ("Happening"). post_type distinguishes a quick curated-icon post from
+-- a live photo post, since photo posts should expire faster by convention (enforced in the
+-- app, not the DB).
+create table meetups (
+  id uuid primary key default gen_random_uuid(),
+  pops_id uuid references pops(id) on delete cascade not null,
+  activity text not null,
+  message text,
+  post_type text check (post_type in ('icon', 'photo')) default 'icon',
+  icon text,
+  photo_path text,
+  lat double precision,
+  lng double precision,
+  expires_at timestamptz not null,
+  created_at timestamptz default now()
+);
+
+-- One row per "I'm in" tap, no identity fields, on purpose.
+create table meetup_responses (
+  id uuid primary key default gen_random_uuid(),
+  meetup_id uuid references meetups(id) on delete cascade not null,
+  created_at timestamptz default now()
+);
+
+alter table meetups enable row level security;
+create policy "public read meetups" on meetups for select using (true);
+create policy "public insert meetups" on meetups for insert with check (true);
+
+alter table meetup_responses enable row level security;
+create policy "public read meetup_responses" on meetup_responses for select using (true);
+create policy "public insert meetup_responses" on meetup_responses for insert with check (true);
+
+insert into storage.buckets (id, name, public) values ('meetup-photos', 'meetup-photos', true);
+create policy "public read meetup photos" on storage.objects for select using (bucket_id = 'meetup-photos');
+create policy "public upload meetup photos" on storage.objects for insert with check (bucket_id = 'meetup-photos');
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values
