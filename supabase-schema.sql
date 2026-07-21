@@ -113,6 +113,13 @@ insert into storage.buckets (id, name, public) values ('scan-media', 'scan-media
 create policy "public read scan-media" on storage.objects for select using (bucket_id = 'scan-media');
 create policy "public upload scan-media" on storage.objects for insert with check (bucket_id = 'scan-media');
 
+-- Migration: added after scan_pins already existed in a live project — widen the type
+-- check to allow in-app recorded video clips (short, silent, capped-duration, no separate
+-- bucket needed, reuses scan-media). Run only if scan_pins was created before this existed.
+alter table scan_pins drop constraint scan_pins_type_check;
+alter table scan_pins add constraint scan_pins_type_check
+  check (type in ('note', 'emoji', 'photo', 'recording', 'video'));
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values

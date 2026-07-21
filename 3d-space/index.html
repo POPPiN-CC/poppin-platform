@@ -59,6 +59,13 @@
   #pin-modal .emoji-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   #pin-modal .emoji-row button{font-size:20px;background:#222;border:1px solid #444;border-radius:8px;
     padding:8px 10px;cursor:pointer}
+  #video-capture{margin-bottom:12px}
+  #video-capture video{width:100%;max-height:220px;object-fit:cover;border-radius:10px;background:#000;display:block}
+  #video-status{font-size:12px;color:#aaa;text-align:center;margin:8px 0}
+  #video-capture .video-controls{display:flex;gap:8px}
+  #video-capture .video-controls button{flex:1;padding:10px;border-radius:8px;border:1px solid #444;
+    background:#222;color:#fff;font-size:13px;cursor:pointer}
+  #video-record{background:#DE5B3E;border-color:#DE5B3E}
   #pin-modal input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #444;
     background:#111;color:#fff;font-size:14px;margin-bottom:12px}
   #pin-modal .actions{display:flex;gap:10px}
@@ -102,11 +109,22 @@
       <button data-type="note" class="active">📝 Note</button>
       <button data-type="emoji">😀 Emoji</button>
       <button data-type="photo" id="photo-type-btn" disabled title="Configure Supabase to enable photo pins">📷 Photo</button>
+      <button data-type="video" id="video-type-btn" disabled title="Configure Supabase to enable video pins">🎥 Video</button>
     </div>
     <div class="emoji-row" id="emoji-row" style="display:none">
       <button type="button">👍</button><button type="button">❤️</button><button type="button">😮</button>
       <button type="button">🎉</button><button type="button">☕</button><button type="button">🌳</button>
       <button type="button">🎵</button><button type="button">📚</button>
+    </div>
+    <div id="video-capture" style="display:none">
+      <video id="video-live" muted autoplay playsinline></video>
+      <video id="video-playback" muted loop playsinline style="display:none"></video>
+      <div id="video-status">Tap Record to start (max 10s)</div>
+      <div class="video-controls">
+        <button type="button" id="video-record">● Record</button>
+        <button type="button" id="video-stop" style="display:none">■ Stop</button>
+        <button type="button" id="video-retake" style="display:none">↺ Retake</button>
+      </div>
     </div>
     <input type="file" id="pin-photo-input" accept="image/*" style="display:none">
     <input id="pin-text" placeholder="Say something about this spot…" />
@@ -235,9 +253,42 @@ function makeEmojiMarker(emoji) {
   return sprite;
 }
 
+// Resize + re-encode a photo client-side before upload — a full-res phone photo (3-4MB)
+// typically comes down to a few hundred KB, which matters a lot against the free-tier
+// 1GB storage cap and 5GB/month egress (egress is spent every time a photo is viewed, not just uploaded).
+function compressImageFile(file, maxDim = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob); else reject(new Error('canvas.toBlob returned null'));
+      }, 'image/webp', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+    img.src = url;
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function addPinToScene(pin) {
   const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text)
     : pin.type === 'photo' ? makeEmojiMarker('📷')
+    : pin.type === 'video' ? makeEmojiMarker('🎥')
     : makeNoteMarker();
   marker.position.set(pin.x, pin.y, pin.z);
   marker.userData.pin = pin;
@@ -297,10 +348,22 @@ function canContribute() {
 function showPinInfo(marker) {
   const pin = marker.userData.pin;
   const when = new Date(pin.createdAt).toLocaleString();
+  clearTimeout(showPinInfo._t);
+
+  if (pin.type === 'video' && supabaseClient && pin.storagePath) {
+    const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
+    pinInfoEl.innerHTML =
+      '<video src="' + data.publicUrl + '" muted loop autoplay playsinline ' +
+      'style="width:100%;max-width:220px;border-radius:8px;display:block;margin:0 auto 6px"></video>' +
+      '<div>' + (pin.text ? escapeHtml(pin.text) + '  ·  ' : '') + when + '</div>';
+    pinInfoEl.style.display = 'block';
+    showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; pinInfoEl.innerHTML = ''; }, 8000);
+    return;
+  }
+
   const prefix = pin.type === 'emoji' ? pin.text + ' ' : pin.type === 'photo' ? '📷 ' : '📝 ';
   pinInfoEl.textContent = prefix + (pin.text || '(photo)') + '  ·  ' + when;
   pinInfoEl.style.display = 'block';
-  clearTimeout(showPinInfo._t);
   showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 4000);
 }
 
@@ -384,10 +447,111 @@ document.getElementById('photo-type-btn').title = supabaseClient
   ? 'Attach a photo to this spot'
   : 'Configure Supabase to enable photo pins';
 
+// ---------- in-app video recording: short, silent, capped-duration clips ----------
+
+const VIDEO_MAX_SECONDS = 10;
+const videoTypeBtn = document.getElementById('video-type-btn');
+const videoCapture = document.getElementById('video-capture');
+const videoLive = document.getElementById('video-live');
+const videoPlayback = document.getElementById('video-playback');
+const videoStatus = document.getElementById('video-status');
+const videoRecordBtn = document.getElementById('video-record');
+const videoStopBtn = document.getElementById('video-stop');
+const videoRetakeBtn = document.getElementById('video-retake');
+
+const cameraSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+videoTypeBtn.disabled = !supabaseClient || !cameraSupported;
+videoTypeBtn.title = !supabaseClient
+  ? 'Configure Supabase to enable video pins'
+  : !cameraSupported
+    ? 'Camera not available on this device/browser'
+    : 'Record a short clip at this spot';
+
+let videoStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedBlob = null;
+let recordCountdown = null;
+
+function stopCameraStream() {
+  clearInterval(recordCountdown);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (videoStream) {
+    videoStream.getTracks().forEach(t => t.stop());
+    videoStream = null;
+  }
+}
+
+async function startCameraPreview() {
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 480 }, height: { ideal: 854 }, frameRate: { ideal: 24 } },
+      audio: false
+    });
+    videoLive.srcObject = videoStream;
+    videoLive.style.display = 'block';
+    videoPlayback.style.display = 'none';
+    videoRecordBtn.style.display = 'block';
+    videoStopBtn.style.display = 'none';
+    videoRetakeBtn.style.display = 'none';
+    videoStatus.textContent = 'Tap Record to start (max ' + VIDEO_MAX_SECONDS + 's)';
+  } catch (err) {
+    videoStatus.textContent = 'Camera unavailable: ' + err.message;
+    console.error(err);
+  }
+}
+
+function startRecording() {
+  if (!videoStream) return;
+  recordedChunks = [];
+  recordedBlob = null;
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
+  mediaRecorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: 400000 });
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    recordedBlob = new Blob(recordedChunks, { type: mimeType });
+    videoLive.style.display = 'none';
+    videoPlayback.src = URL.createObjectURL(recordedBlob);
+    videoPlayback.style.display = 'block';
+    videoPlayback.play();
+    videoRecordBtn.style.display = 'none';
+    videoStopBtn.style.display = 'none';
+    videoRetakeBtn.style.display = 'block';
+    videoStatus.textContent = 'Clip ready — use it or retake';
+    if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  };
+  mediaRecorder.start();
+  videoRecordBtn.style.display = 'none';
+  videoStopBtn.style.display = 'block';
+
+  let secondsLeft = VIDEO_MAX_SECONDS;
+  videoStatus.textContent = 'Recording… ' + secondsLeft + 's left';
+  recordCountdown = setInterval(() => {
+    secondsLeft -= 1;
+    videoStatus.textContent = 'Recording… ' + secondsLeft + 's left';
+    if (secondsLeft <= 0) stopRecording();
+  }, 1000);
+}
+
+function stopRecording() {
+  clearInterval(recordCountdown);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+}
+
+videoRecordBtn.addEventListener('click', startRecording);
+videoStopBtn.addEventListener('click', stopRecording);
+videoRetakeBtn.addEventListener('click', () => {
+  recordedBlob = null;
+  startCameraPreview();
+});
+
 function openPinModal(point) {
   pendingPoint = point;
   selectedType = 'note';
   selectedPhotoFile = null;
+  recordedBlob = null;
+  stopCameraStream();
+  videoCapture.style.display = 'none';
   pinText.value = '';
   pinText.placeholder = 'Say something about this spot…';
   emojiRow.style.display = 'none';
@@ -402,9 +566,22 @@ document.querySelectorAll('#pin-modal .type-row button[data-type]').forEach(btn 
     selectedType = btn.dataset.type;
     document.querySelectorAll('#pin-modal .type-row button').forEach(b => b.classList.toggle('active', b === btn));
     emojiRow.style.display = selectedType === 'emoji' ? 'flex' : 'none';
+
+    if (selectedType !== 'video') {
+      stopCameraStream();
+      videoCapture.style.display = 'none';
+    }
+
     if (selectedType === 'photo') {
+      selectedPhotoFile = null;
       pinText.placeholder = 'Optional caption…';
       photoInput.click();
+    } else if (selectedType === 'video') {
+      selectedPhotoFile = null;
+      recordedBlob = null;
+      pinText.placeholder = 'Optional caption…';
+      videoCapture.style.display = 'block';
+      startCameraPreview();
     } else {
       selectedPhotoFile = null;
       pinText.placeholder = selectedType === 'emoji' ? 'Pick an emoji below, or type one…' : 'Say something about this spot…';
@@ -421,6 +598,7 @@ emojiRow.querySelectorAll('button').forEach(btn => {
 });
 
 document.getElementById('pin-cancel').addEventListener('click', () => {
+  stopCameraStream();
   pinModal.classList.add('hidden');
   pendingPoint = null;
 });
@@ -428,10 +606,37 @@ document.getElementById('pin-cancel').addEventListener('click', () => {
 document.getElementById('pin-save').addEventListener('click', async () => {
   if (!pendingPoint) { pinModal.classList.add('hidden'); return; }
 
+  if (selectedType === 'video') {
+    stopCameraStream();
+    if (!recordedBlob || !supabaseClient) { pinModal.classList.add('hidden'); return; }
+    const path = SCAN_ID + '/' + Date.now() + '_clip.webm';
+    const { error: uploadError } = await supabaseClient.storage.from('scan-media').upload(path, recordedBlob, { contentType: 'video/webm' });
+    if (uploadError) { console.error(uploadError); pinModal.classList.add('hidden'); return; }
+    const pin = {
+      id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      type: 'video', text: pinText.value.trim(), storagePath: path,
+      x: pendingPoint.x, y: pendingPoint.y, z: pendingPoint.z, createdAt: Date.now()
+    };
+    addPinToScene(pin);
+    savePin(pin);
+    pinModal.classList.add('hidden');
+    pendingPoint = null;
+    return;
+  }
+
   if (selectedType === 'photo') {
     if (!selectedPhotoFile || !supabaseClient) { pinModal.classList.add('hidden'); return; }
-    const path = SCAN_ID + '/' + Date.now() + '_' + selectedPhotoFile.name;
-    const { error: uploadError } = await supabaseClient.storage.from('scan-media').upload(path, selectedPhotoFile);
+    let uploadBlob = selectedPhotoFile;
+    let ext = selectedPhotoFile.name.split('.').pop() || 'jpg';
+    try {
+      uploadBlob = await compressImageFile(selectedPhotoFile);
+      ext = 'webp';
+    } catch (err) {
+      console.warn('Photo compression failed, uploading original file instead', err);
+    }
+    const path = SCAN_ID + '/' + Date.now() + '_photo.' + ext;
+    const { error: uploadError } = await supabaseClient.storage.from('scan-media')
+      .upload(path, uploadBlob, { contentType: uploadBlob.type || 'image/jpeg' });
     if (uploadError) { console.error(uploadError); pinModal.classList.add('hidden'); return; }
     const pin = {
       id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
