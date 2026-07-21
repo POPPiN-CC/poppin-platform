@@ -281,15 +281,93 @@ function compressImageFile(file, maxDim = 1600, quality = 0.8) {
   });
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// ---------- photo/video pins: always-visible billboards, not tap-to-reveal icons ----------
+// Sprites billboard (face the camera) automatically in three.js — no per-frame look-at code needed.
+// depthTest is off here, same as the note/emoji markers above, so these always render on top
+// rather than being occluded by the scan mesh (an existing tradeoff, not a new one).
+
+const MEDIA_BILLBOARD_HEIGHT = 0.25;
+const MEDIA_FRAME_MARGIN = 1.08;
+
+function addMediaFrame(pin) {
+  const frame = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff, depthTest: false }));
+  frame.renderOrder = 0;
+  frame.position.set(pin.x, pin.y, pin.z);
+  frame.scale.set(MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, 1);
+  frame.userData.pin = pin;
+  scene.add(frame);
+  pinMarkers.push(frame);
+  return frame;
+}
+
+function sizeToAspect(sprite, frame, aspect) {
+  const h = MEDIA_BILLBOARD_HEIGHT;
+  const w = h * aspect;
+  sprite.scale.set(w, h, 1);
+  frame.scale.set(w * MEDIA_FRAME_MARGIN, h * MEDIA_FRAME_MARGIN, 1);
+}
+
+// Photos bake their border straight into the canvas texture (same technique as the emoji
+// markers above), so a photo pin only ever needs one sprite — no separate frame-behind needed.
+function addPhotoBillboard(pin) {
+  const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const border = Math.round(Math.max(img.width, img.height) * 0.04);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width + border * 2;
+    canvas.height = img.height + border * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, border, border);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+    sprite.renderOrder = 1;
+    sprite.position.set(pin.x, pin.y, pin.z);
+    sprite.userData.pin = pin;
+    const h = MEDIA_BILLBOARD_HEIGHT;
+    sprite.scale.set(h * (canvas.width / canvas.height), h, 1);
+    scene.add(sprite);
+    pinMarkers.push(sprite);
+  };
+  img.onerror = (err) => console.error('Photo pin failed to load', pin.id, err);
+  img.src = data.publicUrl;
+}
+
+// Videos can't have a border baked in cheaply (it's a live-playing texture), so they get a
+// plain white frame sprite behind, plus the video content sprite in front (renderOrder keeps
+// the stacking correct without needing real depth comparison between the two).
+function addVideoBillboard(pin) {
+  const frame = addMediaFrame(pin);
+  const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
+  const videoEl = document.createElement('video');
+  videoEl.muted = true;
+  videoEl.loop = true;
+  videoEl.playsInline = true;
+  videoEl.crossOrigin = 'anonymous';
+  videoEl.addEventListener('loadedmetadata', () => {
+    const texture = new THREE.VideoTexture(videoEl);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+    sprite.renderOrder = 1;
+    sprite.position.copy(frame.position);
+    sprite.userData.pin = pin;
+    sizeToAspect(sprite, frame, videoEl.videoWidth / videoEl.videoHeight);
+    scene.add(sprite);
+    pinMarkers.push(sprite);
+  });
+  videoEl.addEventListener('error', (err) => console.error('Video pin failed to load', pin.id, err));
+  videoEl.src = data.publicUrl;
+  videoEl.play().catch(() => {});
 }
 
 function addPinToScene(pin) {
-  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text)
-    : pin.type === 'photo' ? makeEmojiMarker('📷')
-    : pin.type === 'video' ? makeEmojiMarker('🎥')
-    : makeNoteMarker();
+  if (pin.type === 'photo' && pin.storagePath && supabaseClient) { addPhotoBillboard(pin); return; }
+  if (pin.type === 'video' && pin.storagePath && supabaseClient) { addVideoBillboard(pin); return; }
+  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text) : makeNoteMarker();
   marker.position.set(pin.x, pin.y, pin.z);
   marker.userData.pin = pin;
   scene.add(marker);
@@ -348,22 +426,11 @@ function canContribute() {
 function showPinInfo(marker) {
   const pin = marker.userData.pin;
   const when = new Date(pin.createdAt).toLocaleString();
-  clearTimeout(showPinInfo._t);
-
-  if (pin.type === 'video' && supabaseClient && pin.storagePath) {
-    const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
-    pinInfoEl.innerHTML =
-      '<video src="' + data.publicUrl + '" muted loop autoplay playsinline ' +
-      'style="width:100%;max-width:220px;border-radius:8px;display:block;margin:0 auto 6px"></video>' +
-      '<div>' + (pin.text ? escapeHtml(pin.text) + '  ·  ' : '') + when + '</div>';
-    pinInfoEl.style.display = 'block';
-    showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; pinInfoEl.innerHTML = ''; }, 8000);
-    return;
-  }
-
-  const prefix = pin.type === 'emoji' ? pin.text + ' ' : pin.type === 'photo' ? '📷 ' : '📝 ';
-  pinInfoEl.textContent = prefix + (pin.text || '(photo)') + '  ·  ' + when;
+  const prefix = pin.type === 'emoji' ? pin.text + ' ' : pin.type === 'photo' ? '📷 ' : pin.type === 'video' ? '🎥 ' : '📝 ';
+  const fallback = pin.type === 'photo' ? '(photo)' : pin.type === 'video' ? '(video)' : '';
+  pinInfoEl.textContent = prefix + (pin.text || fallback) + '  ·  ' + when;
   pinInfoEl.style.display = 'block';
+  clearTimeout(showPinInfo._t);
   showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 4000);
 }
 
