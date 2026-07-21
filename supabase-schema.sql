@@ -91,6 +91,28 @@ create policy "public upload photos" on storage.objects for insert with check (b
 create policy "public read recordings" on storage.objects for select using (bucket_id = 'recordings');
 create policy "public upload recordings" on storage.objects for insert with check (bucket_id = 'recordings');
 
+-- Scan-local pins for the 3D space (3d-space/index.html), one row per contribution, never edited.
+-- x/y/z are local coordinates inside a specific scan's GLB, not lat/lng.
+create table scan_pins (
+  id uuid primary key default gen_random_uuid(),
+  scan_id text not null,
+  type text check (type in ('note', 'emoji', 'photo', 'recording')) not null,
+  text text,
+  storage_path text,
+  x double precision not null,
+  y double precision not null,
+  z double precision not null,
+  created_at timestamptz default now()
+);
+
+alter table scan_pins enable row level security;
+create policy "public read scan_pins" on scan_pins for select using (true);
+create policy "public insert scan_pins" on scan_pins for insert with check (true);
+
+insert into storage.buckets (id, name, public) values ('scan-media', 'scan-media', true);
+create policy "public read scan-media" on storage.objects for select using (bucket_id = 'scan-media');
+create policy "public upload scan-media" on storage.objects for insert with check (bucket_id = 'scan-media');
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values

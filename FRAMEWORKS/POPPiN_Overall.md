@@ -32,7 +32,7 @@ This is what the repo should look like once the renames from the last upload are
 poppin-platform/
   index.html                  the real app, must live at the root
   supabase-schema.sql         run this in Supabase SQL editor
-  truth.md                    this document
+ POPPiN_Overall.md                    this document
   README.md                   setup and deploy steps
   scan-viewer/
     index.html               Three.js scan viewer, pin-placement test

@@ -2,72 +2,83 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>POPPiN — 3D space (Long Table)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>POPPiN — 3D space (Canopy)</title>
 <style>
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#111;color:#fff;overflow:hidden}
-  canvas{display:block}
+  html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:#000;color:#fff;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
 
-  #banner{position:fixed;top:12px;left:12px;right:12px;z-index:10;background:rgba(0,0,0,0.7);
-    border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5}
+  /* Phone-shaped frame: fills the screen on an actual phone, letterboxed on wide desktop viewports */
+  #app{position:relative;width:100%;height:100dvh;max-width:430px;margin:0 auto;overflow:hidden;
+    background:#1a1a1a;box-shadow:0 0 60px rgba(0,0,0,0.6)}
+  #app canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  #banner{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;z-index:10;
+    background:rgba(0,0,0,0.7);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5}
   #banner b{color:#DE5B3E}
   #banner .state-tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;
     padding:2px 8px;border-radius:999px;margin-right:8px;background:#333}
-  body.state-inside #banner .state-tag{background:#2e7d32}
-  body.state-near #banner .state-tag{background:#a15b00}
-  body.state-far #banner .state-tag{background:#444}
-  body.state-denied #banner .state-tag{background:#7a1f1f}
+  #app.state-inside #banner .state-tag{background:#2e7d32}
+  #app.state-near #banner .state-tag{background:#a15b00}
+  #app.state-far #banner .state-tag{background:#444}
+  #app.state-denied #banner .state-tag{background:#7a1f1f}
 
-  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:#111;z-index:30;font-size:14px;color:#aaa}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#111;z-index:30;font-size:14px;color:#aaa;text-align:center;padding:0 24px}
 
-  #dev-status{position:fixed;bottom:12px;left:12px;z-index:10;background:rgba(0,0,0,0.75);
-    border-radius:10px;padding:10px 14px;font-size:12px;font-family:Consolas,monospace;max-width:46vw}
+  #dev-status{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;z-index:10;
+    background:rgba(0,0,0,0.75);border-radius:10px;padding:10px 14px;font-size:11px;
+    font-family:Consolas,monospace;max-width:60%}
 
-  #manual-entry{position:fixed;bottom:56px;right:12px;z-index:15;background:rgba(0,0,0,0.85);
-    border-radius:10px;padding:12px;font-size:12px;width:220px}
+  #manual-entry{position:absolute;bottom:calc(56px + env(safe-area-inset-bottom));right:12px;z-index:15;
+    background:rgba(0,0,0,0.9);border-radius:10px;padding:14px;font-size:13px;width:min(240px, 70vw)}
   #manual-entry.hidden{display:none}
   #manual-entry h4{margin:0 0 8px;font-size:12px;color:#DE5B3E}
-  #manual-entry input{width:100%;box-sizing:border-box;margin-bottom:6px;padding:6px;border-radius:6px;
-    border:1px solid #444;background:#1a1a1a;color:#fff;font-size:12px}
-  #manual-entry button{width:100%;margin-top:4px;padding:7px;border:0;border-radius:6px;
-    background:#DE5B3E;color:#fff;font-size:12px;cursor:pointer}
+  #manual-entry input{width:100%;box-sizing:border-box;margin-bottom:8px;padding:10px;border-radius:8px;
+    border:1px solid #444;background:#1a1a1a;color:#fff;font-size:13px}
+  #manual-entry button{width:100%;margin-top:6px;padding:11px;border:0;border-radius:8px;
+    background:#DE5B3E;color:#fff;font-size:13px;cursor:pointer}
   #manual-entry button.secondary{background:#333}
-  #manual-toggle{position:fixed;bottom:12px;right:12px;z-index:16;background:#222;border:1px solid #444;
-    color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer}
+  #manual-toggle{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));
+    right:calc(12px + env(safe-area-inset-right));z-index:16;background:#222;border:1px solid #444;
+    color:#fff;border-radius:10px;padding:11px 14px;font-size:13px;cursor:pointer}
 
-  #pin-modal{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,0.6);display:flex;
-    align-items:center;justify-content:center}
+  /* Bottom-sheet pin modal, easier to reach one-handed than a centered dialog */
+  #pin-modal{position:absolute;inset:0;z-index:25;background:rgba(0,0,0,0.6);display:flex;
+    align-items:flex-end;justify-content:center}
   #pin-modal.hidden{display:none}
-  #pin-modal .inner{background:#1a1a1a;border-radius:12px;padding:18px;width:280px;border:1px solid #333}
-  #pin-modal h3{margin:0 0 10px;font-size:14px}
-  #pin-modal .type-row{display:flex;gap:6px;margin-bottom:10px}
-  #pin-modal .type-row button{flex:1;padding:8px 4px;border-radius:8px;border:1px solid #444;
-    background:#222;color:#fff;font-size:12px;cursor:pointer}
+  #pin-modal .inner{background:#1a1a1a;border-radius:16px 16px 0 0;padding:20px;width:100%;
+    box-sizing:border-box;border-top:1px solid #333;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  #pin-modal h3{margin:0 0 12px;font-size:15px}
+  #pin-modal .type-row{display:flex;gap:8px;margin-bottom:12px}
+  #pin-modal .type-row button{flex:1;padding:12px 4px;border-radius:10px;border:1px solid #444;
+    background:#222;color:#fff;font-size:13px;cursor:pointer}
   #pin-modal .type-row button.active{border-color:#DE5B3E;background:#3a2018}
   #pin-modal .type-row button:disabled{opacity:0.4;cursor:not-allowed}
-  #pin-modal .emoji-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-  #pin-modal .emoji-row button{font-size:18px;background:#222;border:1px solid #444;border-radius:6px;
-    padding:4px 8px;cursor:pointer}
-  #pin-modal input{width:100%;box-sizing:border-box;padding:8px;border-radius:6px;border:1px solid #444;
-    background:#111;color:#fff;font-size:13px;margin-bottom:10px}
-  #pin-modal .actions{display:flex;gap:8px}
-  #pin-modal .actions button{flex:1;padding:8px;border-radius:6px;border:0;cursor:pointer;font-size:13px}
+  #pin-modal .emoji-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  #pin-modal .emoji-row button{font-size:20px;background:#222;border:1px solid #444;border-radius:8px;
+    padding:8px 10px;cursor:pointer}
+  #pin-modal input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #444;
+    background:#111;color:#fff;font-size:14px;margin-bottom:12px}
+  #pin-modal .actions{display:flex;gap:10px}
+  #pin-modal .actions button{flex:1;padding:12px;border-radius:8px;border:0;cursor:pointer;font-size:14px}
   #pin-modal .actions .save{background:#DE5B3E;color:#fff}
   #pin-modal .actions .cancel{background:#333;color:#fff}
 
-  #pin-info{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:12;
-    background:rgba(0,0,0,0.85);border-radius:10px;padding:10px 16px;font-size:13px;max-width:80vw;
+  #pin-info{position:absolute;left:50%;bottom:100px;transform:translateX(-50%);z-index:12;
+    background:rgba(0,0,0,0.85);border-radius:10px;padding:10px 16px;font-size:13px;max-width:85%;
     text-align:center;display:none}
 </style>
 </head>
-<body class="state-waiting">
+<body>
+<div id="app" class="state-waiting">
 
-<div id="loading">Loading Cornell Tech scan (Long Table)…</div>
+<div id="loading">Loading Canopy scan…</div>
 
 <div id="banner">
   <span class="state-tag" id="state-tag">checking</span>
-  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Long Table POPS…</span>
+  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Canopy POPS…</span>
 </div>
 
 <div id="dev-status">state: waiting</div>
@@ -90,19 +101,22 @@
     <div class="type-row">
       <button data-type="note" class="active">📝 Note</button>
       <button data-type="emoji">😀 Emoji</button>
-      <button data-type="photo" disabled title="Coming soon — needs Supabase Storage wiring">📷 Photo</button>
+      <button data-type="photo" id="photo-type-btn" disabled title="Configure Supabase to enable photo pins">📷 Photo</button>
     </div>
     <div class="emoji-row" id="emoji-row" style="display:none">
       <button type="button">👍</button><button type="button">❤️</button><button type="button">😮</button>
       <button type="button">🎉</button><button type="button">☕</button><button type="button">🌳</button>
       <button type="button">🎵</button><button type="button">📚</button>
     </div>
+    <input type="file" id="pin-photo-input" accept="image/*" style="display:none">
     <input id="pin-text" placeholder="Say something about this spot…" />
     <div class="actions">
       <button class="cancel" id="pin-cancel">Cancel</button>
       <button class="save" id="pin-save">Save</button>
     </div>
   </div>
+</div>
+
 </div>
 
 <script type="importmap">
@@ -112,26 +126,40 @@
 }}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const NEAR_RADIUS_METERS = 100;
-const PINS_KEY = 'poppin_3d_pins_long_table';
+const PINS_KEY = 'poppin_3d_pins_canopy';
+const SCAN_ID = 'canopy';
+
+// Fill these in once the Supabase project exists (Project Settings -> API).
+// Until then this falls back to localStorage so the prototype still works standalone.
+const SUPABASE_URL = 'fiigjpvnldjwfadfkurg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWdqcHZubGRqd2ZhZGZrdXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NTU2NDQsImV4cCI6MjEwMDIzMTY0NH0.1Jbdo3ItPScvlJIW2fF2Wjkuv3hQh0S0dThxSnpsik8';
+
+const supabaseClient = SUPABASE_URL.includes('YOUR-PROJECT')
+  ? null
+  : supabase.createClient('https://' + SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const appEl = document.getElementById('app');
 
 // ---------- three.js scene (always mounted, contribution is gated by state) ----------
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a1a);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+const camera = new THREE.PerspectiveCamera(60, appEl.clientWidth / appEl.clientHeight, 0.01, 1000);
 camera.position.set(3, 3, 3);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-document.body.appendChild(renderer.domElement);
+renderer.setSize(appEl.clientWidth, appEl.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+appEl.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -144,8 +172,26 @@ controls.enableDamping = true;
 let scanRoot = null;
 const pinMarkers = [];
 
+// Fit the camera to the loaded object accounting for the current (often narrow/portrait) aspect ratio,
+// so a wide scan isn't clipped on a phone screen the way a fixed offset would clip it.
+function frameCameraToSize(size) {
+  const maxSize = Math.max(size.x, size.y, size.z);
+  const fitOffset = 1.3;
+  const fitHeightDistance = maxSize / (2 * Math.tan((Math.PI * camera.fov) / 360));
+  const fitWidthDistance = fitHeightDistance / camera.aspect;
+  const distance = fitOffset * Math.max(fitHeightDistance, fitWidthDistance);
+  const direction = new THREE.Vector3(1, 0.75, 1).normalize();
+  camera.position.copy(direction.multiplyScalar(distance));
+  camera.near = Math.max(distance / 100, 0.01);
+  camera.far = distance * 100;
+  camera.updateProjectionMatrix();
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
 const loader = new GLTFLoader();
-loader.load('../cornell-tech-scan.glb', (gltf) => {
+loader.setMeshoptDecoder(MeshoptDecoder);
+loader.load('../Assets/Scans/Canopy.glb', (gltf) => {
   scanRoot = gltf.scene;
   scene.add(scanRoot);
 
@@ -153,17 +199,14 @@ loader.load('../cornell-tech-scan.glb', (gltf) => {
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   scanRoot.position.sub(center);
-  const maxDim = Math.max(size.x, size.y, size.z);
-  camera.position.set(maxDim * 0.8, maxDim * 0.6, maxDim * 0.8);
-  controls.target.set(0, 0, 0);
-  controls.update();
+  frameCameraToSize(size);
 
   document.getElementById('loading').style.display = 'none';
   loadStoredPins();
 }, (progress) => {
   if (progress.total) {
     const pct = Math.round((progress.loaded / progress.total) * 100);
-    document.getElementById('loading').textContent = 'Loading Cornell Tech scan (Long Table)… ' + pct + '%';
+    document.getElementById('loading').textContent = 'Loading Canopy scan… ' + pct + '%';
   }
 }, (error) => {
   document.getElementById('loading').textContent = 'Could not load the scan. Check the console for details.';
@@ -193,18 +236,32 @@ function makeEmojiMarker(emoji) {
 }
 
 function addPinToScene(pin) {
-  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text) : makeNoteMarker();
+  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text)
+    : pin.type === 'photo' ? makeEmojiMarker('📷')
+    : makeNoteMarker();
   marker.position.set(pin.x, pin.y, pin.z);
   marker.userData.pin = pin;
   scene.add(marker);
   pinMarkers.push(marker);
 }
 
-function loadStoredPins() {
-  getStoredPins().forEach(addPinToScene);
+async function loadStoredPins() {
+  const pins = await getStoredPins();
+  pins.forEach(addPinToScene);
 }
 
-function getStoredPins() {
+async function getStoredPins() {
+  if (supabaseClient) {
+    const { data, error } = await supabaseClient
+      .from('scan_pins')
+      .select('*')
+      .eq('scan_id', SCAN_ID);
+    if (error) { console.error(error); return []; }
+    return data.map(row => ({
+      id: row.id, type: row.type, text: row.text, storagePath: row.storage_path,
+      x: row.x, y: row.y, z: row.z, createdAt: new Date(row.created_at).getTime()
+    }));
+  }
   try {
     return JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
   } catch (e) {
@@ -212,8 +269,16 @@ function getStoredPins() {
   }
 }
 
-function savePin(pin) {
-  const pins = getStoredPins();
+async function savePin(pin) {
+  if (supabaseClient) {
+    const { error } = await supabaseClient.from('scan_pins').insert({
+      scan_id: SCAN_ID, type: pin.type, text: pin.text, storage_path: pin.storagePath || null,
+      x: pin.x, y: pin.y, z: pin.z
+    });
+    if (error) console.error(error);
+    return;
+  }
+  const pins = JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
   pins.push(pin);
   localStorage.setItem(PINS_KEY, JSON.stringify(pins));
 }
@@ -232,7 +297,8 @@ function canContribute() {
 function showPinInfo(marker) {
   const pin = marker.userData.pin;
   const when = new Date(pin.createdAt).toLocaleString();
-  pinInfoEl.textContent = (pin.type === 'emoji' ? pin.text + ' ' : '📝 ') + pin.text + '  ·  ' + when;
+  const prefix = pin.type === 'emoji' ? pin.text + ' ' : pin.type === 'photo' ? '📷 ' : '📝 ';
+  pinInfoEl.textContent = prefix + (pin.text || '(photo)') + '  ·  ' + when;
   pinInfoEl.style.display = 'block';
   clearTimeout(showPinInfo._t);
   showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 4000);
@@ -245,9 +311,16 @@ function flashLocked() {
   showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 2500);
 }
 
+// Pointer coordinates are relative to the canvas's own bounding box, not the window —
+// the canvas is confined to the phone-frame container and may not fill the viewport.
+function setPointerFromEvent(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+}
+
 function handleTap(clientX, clientY) {
-  pointer.x = (clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+  setPointerFromEvent(clientX, clientY);
   raycaster.setFromCamera(pointer, camera);
 
   const markerHits = raycaster.intersectObjects(pinMarkers, true);
@@ -279,11 +352,16 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (dx < 4 && dy < 4) handleTap(e.clientX, e.clientY);
 });
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+// Watch the phone-frame container itself, not the window — on wide desktop viewports the
+// container stays pinned at max-width regardless of window resizes, so a window listener
+// alone would miss real size changes (and would falsely fire on ones that don't matter).
+new ResizeObserver(() => {
+  const w = appEl.clientWidth, h = appEl.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  renderer.setSize(w, h);
+}).observe(appEl);
 
 function animate() {
   requestAnimationFrame(animate);
@@ -297,11 +375,19 @@ animate();
 const pinModal = document.getElementById('pin-modal');
 const pinText = document.getElementById('pin-text');
 const emojiRow = document.getElementById('emoji-row');
+const photoInput = document.getElementById('pin-photo-input');
 let selectedType = 'note';
+let selectedPhotoFile = null;
+
+document.getElementById('photo-type-btn').disabled = !supabaseClient;
+document.getElementById('photo-type-btn').title = supabaseClient
+  ? 'Attach a photo to this spot'
+  : 'Configure Supabase to enable photo pins';
 
 function openPinModal(point) {
   pendingPoint = point;
   selectedType = 'note';
+  selectedPhotoFile = null;
   pinText.value = '';
   pinText.placeholder = 'Say something about this spot…';
   emojiRow.style.display = 'none';
@@ -316,8 +402,18 @@ document.querySelectorAll('#pin-modal .type-row button[data-type]').forEach(btn 
     selectedType = btn.dataset.type;
     document.querySelectorAll('#pin-modal .type-row button').forEach(b => b.classList.toggle('active', b === btn));
     emojiRow.style.display = selectedType === 'emoji' ? 'flex' : 'none';
-    pinText.placeholder = selectedType === 'emoji' ? 'Pick an emoji below, or type one…' : 'Say something about this spot…';
+    if (selectedType === 'photo') {
+      pinText.placeholder = 'Optional caption…';
+      photoInput.click();
+    } else {
+      selectedPhotoFile = null;
+      pinText.placeholder = selectedType === 'emoji' ? 'Pick an emoji below, or type one…' : 'Say something about this spot…';
+    }
   });
+});
+
+photoInput.addEventListener('change', (e) => {
+  selectedPhotoFile = e.target.files[0] || null;
 });
 
 emojiRow.querySelectorAll('button').forEach(btn => {
@@ -329,9 +425,28 @@ document.getElementById('pin-cancel').addEventListener('click', () => {
   pendingPoint = null;
 });
 
-document.getElementById('pin-save').addEventListener('click', () => {
+document.getElementById('pin-save').addEventListener('click', async () => {
+  if (!pendingPoint) { pinModal.classList.add('hidden'); return; }
+
+  if (selectedType === 'photo') {
+    if (!selectedPhotoFile || !supabaseClient) { pinModal.classList.add('hidden'); return; }
+    const path = SCAN_ID + '/' + Date.now() + '_' + selectedPhotoFile.name;
+    const { error: uploadError } = await supabaseClient.storage.from('scan-media').upload(path, selectedPhotoFile);
+    if (uploadError) { console.error(uploadError); pinModal.classList.add('hidden'); return; }
+    const pin = {
+      id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      type: 'photo', text: pinText.value.trim(), storagePath: path,
+      x: pendingPoint.x, y: pendingPoint.y, z: pendingPoint.z, createdAt: Date.now()
+    };
+    addPinToScene(pin);
+    savePin(pin);
+    pinModal.classList.add('hidden');
+    pendingPoint = null;
+    return;
+  }
+
   const text = pinText.value.trim();
-  if (!text || !pendingPoint) { pinModal.classList.add('hidden'); return; }
+  if (!text) { pinModal.classList.add('hidden'); return; }
   const pin = {
     id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     type: selectedType,
@@ -356,7 +471,7 @@ let currentState = 'waiting';
 let manualOverrideState = null; // set by the "force inside" admin backdoor
 
 const STATE_COPY = {
-  waiting: '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the Long Table POPS…',
+  waiting: '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the Canopy POPS…',
   denied: '<b>Location unavailable.</b> Use manual entry (bottom right) to test the space, or move somewhere your device can get a GPS fix.',
   inside: '<b>You\'re inside.</b> Tap the model to add a note or emoji tied to that exact spot.',
   near: '<b>You\'re close by</b> (within ' + NEAR_RADIUS_METERS + 'm) but not inside yet. Viewing only — step inside to add content.',
@@ -366,7 +481,7 @@ const STATE_COPY = {
 function applyState(state, meta) {
   const effective = manualOverrideState || state;
   currentState = effective;
-  document.body.className = 'state-' + effective;
+  appEl.className = 'state-' + effective;
   stateTag.textContent = effective;
   bannerText.innerHTML = STATE_COPY[effective] || '';
   devStatus.textContent = 'state: ' + effective +
@@ -401,7 +516,7 @@ function startGeolocation() {
   });
 }
 
-fetch('../Assets/Scans/Long_Table.geojson')
+fetch('../Assets/GIS/Canopy.geojson')
   .then(r => r.json())
   .then(fc => { popsPolygon = fc.features[0]; startGeolocation(); })
   .catch(() => { applyState('denied', {}); });
