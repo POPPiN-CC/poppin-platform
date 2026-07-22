@@ -1,0 +1,6 @@
+<svg width="240" height="70" viewBox="0 0 240 70" xmlns="http://www.w3.org/2000/svg">
+  <text x="0" y="52" font-family="Grandstander, sans-serif" font-weight="800" font-size="46" fill="#1A1A1A">POPP</text>
+  <rect x="132" y="30" width="7" height="22" rx="3" fill="#1A1A1A"/>
+  <path d="M135.5 4 C 130.5 4 126.5 8 126.5 13 C 126.5 19.5 135.5 28 135.5 28 C 135.5 28 144.5 19.5 144.5 13 C 144.5 8 140.5 4 135.5 4 Z" fill="#1FBF6B"/>
+  <text x="150" y="52" font-family="Grandstander, sans-serif" font-weight="800" font-size="46" fill="#1A1A1A">N</text>
+</svg>
