@@ -164,6 +164,23 @@ insert into storage.buckets (id, name, public) values ('meetup-photos', 'meetup-
 create policy "public read meetup photos" on storage.objects for select using (bucket_id = 'meetup-photos');
 create policy "public upload meetup photos" on storage.objects for insert with check (bucket_id = 'meetup-photos');
 
+-- Migration: aligns pops/ratings with FRAMEWORKS/POPPIN_App_Framework.md.
+-- pops gains the real fields the official NYC POPS CSV actually has (see
+-- Assets/Data/Privately_Owned_Public_Spaces.csv); the old free-form `amenities`
+-- column stays, reserved for hand-curated icon-friendly tags on the 3 real pilot
+-- spaces, since the CSV's raw amenity text doesn't map cleanly to the icon lookup.
+alter table pops add column building_name text;
+alter table pops add column building_address text;
+alter table pops add column public_space_type text;
+alter table pops add column amenities_required text[];
+alter table pops add column permitted_amenities text[];
+
+-- ratings: ratings a POPS on quiet<->lively give way to unsafe<->safe. Liveliness
+-- becomes a computed metric (crowdedness + logged activity) instead of a raw slider,
+-- so it no longer needs a column here at all.
+alter table ratings drop column quiet;
+alter table ratings add column safety int check (safety between 0 and 100);
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values

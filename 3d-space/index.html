@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>POPPiN — 3D space (Canopy)</title>
+<title>POPPiN — 3D space (Queensboro View)</title>
 <style>
   html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     background:#000;color:#fff;overflow:hidden}
@@ -81,11 +81,11 @@
 <body>
 <div id="app" class="state-waiting">
 
-<div id="loading">Loading Canopy scan…</div>
+<div id="loading">Loading Queensboro View scan…</div>
 
 <div id="banner">
   <span class="state-tag" id="state-tag">checking</span>
-  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Canopy POPS…</span>
+  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Queensboro View POPS…</span>
 </div>
 
 <div id="dev-status">state: waiting</div>
@@ -152,8 +152,27 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const NEAR_RADIUS_METERS = 100;
-const PINS_KEY = 'poppin_3d_pins_canopy';
-const SCAN_ID = 'canopy';
+
+// Which pilot scan this page shows is chosen via ?scan=<slug> (e.g. 3d-space/?scan=tata-green),
+// so the main app's "Look Inside" button can link straight to the right one per POPS.
+const SCANS = {
+  'queensboro-view': { id: 'queensboro_view', name: 'Queensboro View', glb: '../Assets/Scans/Queensboro_View.glb', geojson: '../Assets/GIS/Queensboro_View.geojson' },
+  'tata-green': { id: 'tata_green', name: 'Tata Green', glb: '../Assets/Scans/Tata_Green/Tata_Green.glb', geojson: '../Assets/GIS/Tata_Green.geojson' },
+  'squirrel-grove': { id: 'squirrel_grove', name: 'Squirrel Grove', glb: '../Assets/Scans/Squirrel_Grove/Squirrel_Grove.glb', geojson: '../Assets/GIS/Squirrel_Grove.geojson' }
+};
+const DEFAULT_SCAN_SLUG = 'queensboro-view';
+const requestedSlug = (new URLSearchParams(window.location.search).get('scan') || '').toLowerCase().replace(/_/g, '-');
+const SCAN = SCANS[requestedSlug] || SCANS[DEFAULT_SCAN_SLUG];
+const SCAN_ID = SCAN.id;
+const PINS_KEY = 'poppin_3d_pins_' + SCAN.id;
+
+// The static HTML defaults to Queensboro View's copy for the no-JS/pre-paint moment;
+// sync it to the actual selected scan immediately, since nothing else ever writes
+// the "waiting" state's text (every other state is only reached after this runs).
+document.title = 'POPPiN — 3D space (' + SCAN.name + ')';
+document.getElementById('loading').textContent = 'Loading ' + SCAN.name + ' scan…';
+document.getElementById('banner-text').innerHTML =
+  '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the ' + SCAN.name + ' POPS…';
 
 // Fill these in once the Supabase project exists (Project Settings -> API).
 // Until then this falls back to localStorage so the prototype still works standalone.
@@ -209,7 +228,7 @@ function frameCameraToSize(size) {
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
-loader.load('../Assets/Scans/Canopy.glb', (gltf) => {
+loader.load(SCAN.glb, (gltf) => {
   scanRoot = gltf.scene;
   scene.add(scanRoot);
 
@@ -224,7 +243,7 @@ loader.load('../Assets/Scans/Canopy.glb', (gltf) => {
 }, (progress) => {
   if (progress.total) {
     const pct = Math.round((progress.loaded / progress.total) * 100);
-    document.getElementById('loading').textContent = 'Loading Canopy scan… ' + pct + '%';
+    document.getElementById('loading').textContent = 'Loading ' + SCAN.name + ' scan… ' + pct + '%';
   }
 }, (error) => {
   document.getElementById('loading').textContent = 'Could not load the scan. Check the console for details.';
@@ -743,7 +762,7 @@ let currentState = 'waiting';
 let manualOverrideState = null; // set by the "force inside" admin backdoor
 
 const STATE_COPY = {
-  waiting: '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the Canopy POPS…',
+  waiting: '<b>POPPiN 3D space.</b> Asking your browser for your location to see whether you\'re inside the ' + SCAN.name + ' POPS…',
   denied: '<b>Location unavailable.</b> Use manual entry (bottom right) to test the space, or move somewhere your device can get a GPS fix.',
   inside: '<b>You\'re inside.</b> Tap the model to add a note or emoji tied to that exact spot.',
   near: '<b>You\'re close by</b> (within ' + NEAR_RADIUS_METERS + 'm) but not inside yet. Viewing only — step inside to add content.',
@@ -788,7 +807,7 @@ function startGeolocation() {
   });
 }
 
-fetch('../Assets/GIS/Canopy.geojson')
+fetch(SCAN.geojson)
   .then(r => r.json())
   .then(fc => { popsPolygon = fc.features[0]; startGeolocation(); })
   .catch(() => { applyState('denied', {}); });

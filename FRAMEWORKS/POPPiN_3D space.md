@@ -19,12 +19,23 @@ Three ingredients:
 1. **Location** from the browser's Geolocation API.
 2. **Geometry** you carry with the site (a GeoJSON in `assets/data/`).
 3. **A decision function** that returns a state (`inside`, `outside`) and drives the UI.
-4. **3D Scans** of each site (a .obj in `assets/scans/`).
+4. **3D Scans** of each site (in `assets/scans/`). 
 4. **User submissions** are allowed to be placed by users who are in the site. (images, videos, recordings)
 
-## Data sources
+## User Submissions
 
-- NYC POPS point dataset: https://data.cityofnewyork.us/City-Government/Privately-Owned-Public-Space-POPS/rvih-nhyn
+- Users may submit emojis, text on a sticky note, recordings, photos that will be compressed, and videos captured from the browser, also compressed.
+- Submissions are pinned to specific location in the 3D model.
+
+## 3D scans
+
+- Developer submitted. The goal is .glb format. If scans are not in that format, they are to be converted and compressed to be light when loaded on a phone.
+
+## Look
+
+- Follow design standard layed out in FRAMEWORKS\POPPIN_App_Framework.md
+- Use a white background to the 3D model.
+
 
 ## API notes
 
@@ -70,9 +81,7 @@ const inside = turf.booleanPointInPolygon(point, popsPolygon);
 - **Far:** show a map with all POPS and allow users to view the 3d space with user submissions
 - **Manual Entry:** a backdoor that lets users pretend to be in the GeoFenced area (for administrative use
 
-## Extensions
 
-- **Time zones.** Change the interface based on the time of day too. A POPS is legally required to be publicly accessible during specific hours; show that state.
 
 ## Common pitfalls
 
@@ -80,3 +89,7 @@ const inside = turf.booleanPointInPolygon(point, popsPolygon);
 - **Denied permission.** Have a manual location entry fallback.
 - **Accuracy on desktop.** Test on your phone. Desktop GPS is essentially useless.
 - **Turf bundle size.** `turf.min.js` is ~500KB. If you only need `booleanPointInPolygon`, import that module directly.
+
+## How to use this document
+
+Treat this as the source of truth for "what should this look like and say." If you or I change a color, a piece of copy, or add a screen, update this file in the same sitting, don't let it drift out of date.

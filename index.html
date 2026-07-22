@@ -207,8 +207,8 @@ const VIBE_STOPS = [
   { at: 75,  color: [217, 165, 33] },
   { at: 100, color: [232, 118, 61] }
 ];
-function vibeColor(quiet) {
-  const v = Math.max(0, Math.min(100, quiet));
+function vibeColor(liveliness) {
+  const v = Math.max(0, Math.min(100, liveliness));
   for (let i = 0; i < VIBE_STOPS.length - 1; i++) {
     const a = VIBE_STOPS[i], b = VIBE_STOPS[i + 1];
     if (v >= a.at && v <= b.at) {
@@ -234,12 +234,19 @@ const COMING_SOON_ICON = L.divIcon({
 });
 
 async function getAverages(popsId) {
-  if (!supabase) return { quiet: 50, crowd: 50, welcome: 50, count: 0 };
-  const { data } = await supabase.from('ratings').select('quiet,crowd,welcome').eq('pops_id', popsId);
-  if (!data || data.length === 0) return { quiet: 50, crowd: 50, welcome: 50, count: 0 };
+  if (!supabase) return { safety: 50, crowd: 50, welcome: 50, count: 0 };
+  const { data } = await supabase.from('ratings').select('safety,crowd,welcome').eq('pops_id', popsId);
+  if (!data || data.length === 0) return { safety: 50, crowd: 50, welcome: 50, count: 0 };
   const n = data.length;
-  const sum = data.reduce((a, r) => ({ quiet: a.quiet + r.quiet, crowd: a.crowd + r.crowd, welcome: a.welcome + r.welcome }), { quiet: 0, crowd: 0, welcome: 0 });
-  return { quiet: Math.round(sum.quiet / n), crowd: Math.round(sum.crowd / n), welcome: Math.round(sum.welcome / n), count: n };
+  const sum = data.reduce((a, r) => ({ safety: a.safety + r.safety, crowd: a.crowd + r.crowd, welcome: a.welcome + r.welcome }), { safety: 0, crowd: 0, welcome: 0 });
+  return { safety: Math.round(sum.safety / n), crowd: Math.round(sum.crowd / n), welcome: Math.round(sum.welcome / n), count: n };
+}
+
+// Liveliness (what colors map pins) is meant to be a computed metric — crowdedness plus
+// logged activity — not a raw slider. Using crowd alone as the proxy for now; folding in
+// activity/trace counts is tracked as later polish, not done here.
+function computeLiveliness(avg) {
+  return avg.crowd;
 }
 
 // Real straight-line distance in meters (Haversine), then a rough walking-minutes
@@ -386,7 +393,7 @@ async function loadList(searchText) {
   const comingSoon = allPops.filter(p => p.status !== 'active');
   const activeRows = await Promise.all(activeOnly.map(async p => ({ p, avg: await getAverages(p.id) })));
   await renderMapMarkers(
-    activeRows.map(r => Object.assign({}, r.p, { _color: vibeColor(r.avg.quiet), _count: r.avg.count })),
+    activeRows.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.avg)), _count: r.avg.count })),
     comingSoon
   );
 
@@ -410,8 +417,9 @@ async function loadList(searchText) {
     return;
   }
   wrap.innerHTML = filtered.map(({ p, avg }) => {
-    const color = vibeColor(avg.quiet);
-    const vibeWord = avg.quiet < 35 ? 'Quiet' : avg.quiet < 65 ? 'Balanced' : 'Lively';
+    const liveliness = computeLiveliness(avg);
+    const color = vibeColor(liveliness);
+    const vibeWord = liveliness < 35 ? 'Quiet' : liveliness < 65 ? 'Balanced' : 'Lively';
     const crowdWord = avg.crowd < 45 ? 'Not crowded' : avg.crowd < 70 ? 'Some seats' : 'Crowded';
     return '<button class="card" onclick="window.openProfile(\'' + p.id + '\')">' +
       '<div class="accentbar" style="background:' + color + '"></div>' +
@@ -607,8 +615,8 @@ window.openProfile = async function (id) {
   const p = allPops.find(x => x.id === id);
   currentPops = p;
   const avg = await getAverages(p.id);
-  const color = vibeColor(avg.quiet);
-  pendingRating = { quiet: avg.quiet, crowd: avg.crowd, welcome: avg.welcome };
+  const color = vibeColor(computeLiveliness(avg));
+  pendingRating = { safety: avg.safety, crowd: avg.crowd, welcome: avg.welcome };
 
   const { data: wishes } = supabase ? await supabase.from('wishes').select('*').eq('pops_id', p.id).eq('kind', 'wish').order('votes', { ascending: false }) : { data: [] };
   profileWishes = wishes || [];
@@ -651,13 +659,13 @@ function renderVibeTab(p, avg, color) {
       '<div class="mini-circle" onclick="alert(\'3D scan coming soon for this spot\')">&#127968;</div>' +
     '</div>' +
     '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:12px 0 4px">Drag to add your read on it</p>' +
-    sliderHTML('quiet', 'Quiet', 'Lively', avg.quiet) +
+    sliderHTML('safety', 'Unsafe', 'Safe', avg.safety) +
     sliderHTML('crowd', 'Open seating', 'Crowded', avg.crowd) +
     sliderHTML('welcome', 'Welcoming', 'Closed off', avg.welcome, true) +
     '<p class="hint-text">White dot = everyone\'s average &middot; drag the ring to add yours</p>' +
     '<button class="btn-space" style="background:' + color + '" onclick="window.submitVibeRating()">Submit my read &amp; get directions</button>';
 
-  ['quiet', 'crowd', 'welcome'].forEach(key => attachSlider(key));
+  ['safety', 'crowd', 'welcome'].forEach(key => attachSlider(key));
 }
 
 function sliderHTML(key, leftLabel, rightLabel, avgValue, invert) {
@@ -709,7 +717,7 @@ window.submitVibeRating = async function () {
   if (!currentPops || !supabase) { window.backToList(); return; }
   const row = {
     pops_id: currentPops.id,
-    quiet: pendingRating.quiet, crowd: pendingRating.crowd, welcome: pendingRating.welcome,
+    safety: pendingRating.safety, crowd: pendingRating.crowd, welcome: pendingRating.welcome,
     lat: currentLocation ? currentLocation.lat : null, lng: currentLocation ? currentLocation.lng : null
   };
   await supabase.from('ratings').insert(row);
