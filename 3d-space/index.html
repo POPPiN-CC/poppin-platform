@@ -4,78 +4,92 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>POPPiN — 3D space (Queensboro View)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Grandstander:wght@600;700;800&family=Varela+Round&display=swap" rel="stylesheet">
 <style>
-  html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    background:#000;color:#fff;overflow:hidden}
+  :root{
+    --green:#1FBF6B; --green-tint:#EAF9F0;
+    --ink:#1A1A1A; --muted:#8A8A82; --line:#EEEEEE; --panel:#F1F0EC; --bg:#FAFAF8;
+    --font-display:'Grandstander',sans-serif; --font-body:'Varela Round',sans-serif;
+  }
+  html,body{height:100%;margin:0;font-family:var(--font-body);
+    background:var(--panel);color:var(--ink);overflow:hidden}
   body{display:flex;align-items:center;justify-content:center}
+  button{font-family:var(--font-display);font-weight:700}
 
-  /* Phone-shaped frame: fills the screen on an actual phone, letterboxed on wide desktop viewports */
+  /* Phone-shaped frame: fills the screen on an actual phone, letterboxed (light, per the
+     design framework) on wide desktop viewports */
   #app{position:relative;width:100%;height:100dvh;max-width:430px;margin:0 auto;overflow:hidden;
-    background:#1a1a1a;box-shadow:0 0 60px rgba(0,0,0,0.6)}
+    background:var(--bg);box-shadow:0 0 40px rgba(0,0,0,0.1)}
   #app canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
   #banner{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;z-index:10;
-    background:rgba(0,0,0,0.7);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5}
-  #banner b{color:#DE5B3E}
-  #banner .state-tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;
-    padding:2px 8px;border-radius:999px;margin-right:8px;background:#333}
-  #app.state-inside #banner .state-tag{background:#2e7d32}
-  #app.state-near #banner .state-tag{background:#a15b00}
-  #app.state-far #banner .state-tag{background:#444}
-  #app.state-denied #banner .state-tag{background:#7a1f1f}
+    background:rgba(255,255,255,0.92);border:1px solid var(--line);border-radius:10px;
+    padding:12px 16px;font-size:13px;line-height:1.5;box-shadow:0 2px 10px rgba(0,0,0,0.06)}
+  #banner b{color:var(--green)}
+  #banner .state-tag{display:inline-block;font-family:var(--font-display);font-weight:700;font-size:11px;
+    text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;margin-right:8px;
+    background:var(--panel);color:var(--muted)}
+  #app.state-inside #banner .state-tag{background:#2e7d32;color:#fff}
+  #app.state-near #banner .state-tag{background:#a15b00;color:#fff}
+  #app.state-far #banner .state-tag{background:#8A8A82;color:#fff}
+  #app.state-denied #banner .state-tag{background:#c0392b;color:#fff}
 
   #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:#111;z-index:30;font-size:14px;color:#aaa;text-align:center;padding:0 24px}
+    background:var(--bg);z-index:30;font-size:14px;color:var(--muted);text-align:center;padding:0 24px}
 
   #dev-status{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;z-index:10;
-    background:rgba(0,0,0,0.75);border-radius:10px;padding:10px 14px;font-size:11px;
-    font-family:Consolas,monospace;max-width:60%}
+    background:rgba(255,255,255,0.9);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+    font-size:11px;font-family:Consolas,monospace;color:var(--muted);max-width:60%}
 
   #manual-entry{position:absolute;bottom:calc(56px + env(safe-area-inset-bottom));right:12px;z-index:15;
-    background:rgba(0,0,0,0.9);border-radius:10px;padding:14px;font-size:13px;width:min(240px, 70vw)}
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13px;
+    width:min(240px, 70vw);box-shadow:0 4px 16px rgba(0,0,0,0.1)}
   #manual-entry.hidden{display:none}
-  #manual-entry h4{margin:0 0 8px;font-size:12px;color:#DE5B3E}
+  #manual-entry h4{margin:0 0 8px;font-size:12px;font-family:var(--font-display);color:var(--green)}
   #manual-entry input{width:100%;box-sizing:border-box;margin-bottom:8px;padding:10px;border-radius:8px;
-    border:1px solid #444;background:#1a1a1a;color:#fff;font-size:13px}
+    border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;font-family:var(--font-body)}
   #manual-entry button{width:100%;margin-top:6px;padding:11px;border:0;border-radius:8px;
-    background:#DE5B3E;color:#fff;font-size:13px;cursor:pointer}
-  #manual-entry button.secondary{background:#333}
+    background:var(--green);color:#fff;font-size:13px;cursor:pointer}
+  #manual-entry button.secondary{background:var(--panel);color:var(--ink)}
   #manual-toggle{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));
-    right:calc(12px + env(safe-area-inset-right));z-index:16;background:#222;border:1px solid #444;
-    color:#fff;border-radius:10px;padding:11px 14px;font-size:13px;cursor:pointer}
+    right:calc(12px + env(safe-area-inset-right));z-index:16;background:#fff;border:1px solid var(--line);
+    color:var(--ink);border-radius:10px;padding:11px 14px;font-size:13px;cursor:pointer;
+    box-shadow:0 2px 10px rgba(0,0,0,0.08)}
 
   /* Bottom-sheet pin modal, easier to reach one-handed than a centered dialog */
-  #pin-modal{position:absolute;inset:0;z-index:25;background:rgba(0,0,0,0.6);display:flex;
+  #pin-modal{position:absolute;inset:0;z-index:25;background:rgba(0,0,0,0.35);display:flex;
     align-items:flex-end;justify-content:center}
   #pin-modal.hidden{display:none}
-  #pin-modal .inner{background:#1a1a1a;border-radius:16px 16px 0 0;padding:20px;width:100%;
-    box-sizing:border-box;border-top:1px solid #333;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
-  #pin-modal h3{margin:0 0 12px;font-size:15px}
+  #pin-modal .inner{background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;
+    box-sizing:border-box;border-top:1px solid var(--line);padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  #pin-modal h3{margin:0 0 12px;font-size:15px;font-family:var(--font-display);color:var(--ink)}
   #pin-modal .type-row{display:flex;gap:8px;margin-bottom:12px}
-  #pin-modal .type-row button{flex:1;padding:12px 4px;border-radius:10px;border:1px solid #444;
-    background:#222;color:#fff;font-size:13px;cursor:pointer}
-  #pin-modal .type-row button.active{border-color:#DE5B3E;background:#3a2018}
+  #pin-modal .type-row button{flex:1;padding:12px 4px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);font-size:13px;cursor:pointer}
+  #pin-modal .type-row button.active{border-color:var(--green);background:var(--green-tint)}
   #pin-modal .type-row button:disabled{opacity:0.4;cursor:not-allowed}
   #pin-modal .emoji-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-  #pin-modal .emoji-row button{font-size:20px;background:#222;border:1px solid #444;border-radius:8px;
-    padding:8px 10px;cursor:pointer}
+  #pin-modal .emoji-row button{font-size:20px;background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;cursor:pointer}
   #video-capture{margin-bottom:12px}
   #video-capture video{width:100%;max-height:220px;object-fit:cover;border-radius:10px;background:#000;display:block}
-  #video-status{font-size:12px;color:#aaa;text-align:center;margin:8px 0}
+  #video-status{font-size:12px;color:var(--muted);text-align:center;margin:8px 0;font-family:var(--font-body)}
   #video-capture .video-controls{display:flex;gap:8px}
-  #video-capture .video-controls button{flex:1;padding:10px;border-radius:8px;border:1px solid #444;
-    background:#222;color:#fff;font-size:13px;cursor:pointer}
-  #video-record{background:#DE5B3E;border-color:#DE5B3E}
-  #pin-modal input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #444;
-    background:#111;color:#fff;font-size:14px;margin-bottom:12px}
+  #video-capture .video-controls button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);font-size:13px;cursor:pointer}
+  #video-record{background:var(--green);border-color:var(--green);color:#fff}
+  #pin-modal input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid var(--line);
+    background:var(--bg);color:var(--ink);font-size:14px;margin-bottom:12px;font-family:var(--font-body)}
   #pin-modal .actions{display:flex;gap:10px}
   #pin-modal .actions button{flex:1;padding:12px;border-radius:8px;border:0;cursor:pointer;font-size:14px}
-  #pin-modal .actions .save{background:#DE5B3E;color:#fff}
-  #pin-modal .actions .cancel{background:#333;color:#fff}
+  #pin-modal .actions .save{background:var(--green);color:#fff}
+  #pin-modal .actions .cancel{background:var(--panel);color:var(--ink)}
 
   #pin-info{position:absolute;left:50%;bottom:100px;transform:translateX(-50%);z-index:12;
-    background:rgba(0,0,0,0.85);border-radius:10px;padding:10px 16px;font-size:13px;max-width:85%;
-    text-align:center;display:none}
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:13px;
+    max-width:85%;text-align:center;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.1);
+    font-family:var(--font-body);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -148,6 +162,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
@@ -188,7 +203,7 @@ const appEl = document.getElementById('app');
 // ---------- three.js scene (always mounted, contribution is gated by state) ----------
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a1a);
+scene.background = new THREE.Color(0xFAFAF8); // white background per the design framework
 
 const camera = new THREE.PerspectiveCamera(60, appEl.clientWidth / appEl.clientHeight, 0.01, 1000);
 camera.position.set(3, 3, 3);
@@ -228,6 +243,11 @@ function frameCameraToSize(size) {
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
+// Some scans are meshopt-compressed (the earlier gltf-transform pass), others come
+// pre-compressed with Draco straight out of Polycam — support both.
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+loader.setDRACOLoader(dracoLoader);
 loader.load(SCAN.glb, (gltf) => {
   scanRoot = gltf.scene;
   scene.add(scanRoot);
@@ -253,7 +273,7 @@ loader.load(SCAN.glb, (gltf) => {
 function makeNoteMarker() {
   return new THREE.Mesh(
     new THREE.SphereGeometry(0.03, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xDE5B3E })
+    new THREE.MeshBasicMaterial({ color: 0x1FBF6B }) // App Green, not coral — matches the brand system
   );
 }
 
@@ -304,12 +324,15 @@ function compressImageFile(file, maxDim = 1600, quality = 0.8) {
 // Sprites billboard (face the camera) automatically in three.js — no per-frame look-at code needed.
 // depthTest is off here, same as the note/emoji markers above, so these always render on top
 // rather than being occluded by the scan mesh (an existing tradeoff, not a new one).
+// Frame color is App Green, not white — the scene background is white now, so a white
+// frame would be invisible against it.
 
 const MEDIA_BILLBOARD_HEIGHT = 0.25;
 const MEDIA_FRAME_MARGIN = 1.08;
+const MEDIA_FRAME_COLOR = '#1FBF6B';
 
 function addMediaFrame(pin) {
-  const frame = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff, depthTest: false }));
+  const frame = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x1FBF6B, depthTest: false }));
   frame.renderOrder = 0;
   frame.position.set(pin.x, pin.y, pin.z);
   frame.scale.set(MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, 1);
@@ -338,7 +361,7 @@ function addPhotoBillboard(pin) {
     canvas.width = img.width + border * 2;
     canvas.height = img.height + border * 2;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = MEDIA_FRAME_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, border, border);
     const texture = new THREE.CanvasTexture(canvas);
