@@ -75,7 +75,10 @@
   .leaflet-popup-content-wrapper{border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.18)}
   .leaflet-popup-content{margin:0;width:220px !important}
   .pin-preview{display:flex;flex-direction:column;cursor:pointer;font-family:var(--font-body)}
-  .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0;background-size:cover;background-position:center}
+  .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0;background-size:cover;background-position:center;position:relative}
+  .pin-live-pill{position:absolute;top:6px;left:6px;max-width:calc(100% - 12px);box-sizing:border-box;
+    color:#fff;font-family:var(--font-body);font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
   .pin-preview .pin-preview-body{padding:10px 12px}
   .pin-preview .pin-preview-name{font-family:var(--font-display);font-weight:700;font-size:13px;margin:0;color:var(--ink)}
   .pin-preview .pin-preview-meta{font-size:11px;color:var(--muted);margin:3px 0 0}
@@ -121,6 +124,10 @@
   .picon-btn-lg img{width:40px;height:40px}
   .picon-btn-cyan{background:#22D3EE}
   .picon-btn-pink{background:#FF6B9D}
+  /* Map header's recenter-on-me button — reuses .picon-btn's plain white circle, plus a
+     shadow since (unlike the profile's back/save buttons, which sit on a solid header color)
+     this one floats over the map-overlay-top gradient, which fades to transparent map tiles. */
+  .locate-btn{box-shadow:0 2px 6px rgba(0,0,0,0.2)}
   .pscript-tag{font-family:var(--font-script);font-size:16px;color:#4A4436;margin:0;background:rgba(255,255,255,0.9);padding:3px 9px;border-radius:7px}
   .ptabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
   .ptab-btn{padding:5px 12px;font-family:var(--font-display);font-size:11px;font-weight:700;cursor:pointer;border:none;background:var(--panel);color:#8A8A82}
@@ -233,6 +240,9 @@
             <button class="searchicon" id="filterIcon" onclick="window.toggleFilters()" aria-label="Filter"><img src="Assets/Vectors/filter.png" alt=""/></button>
             <button class="searchicon" onclick="window.toggleSearch()" aria-label="Search"><img src="Assets/Vectors/search.png" alt=""/></button>
           </div>
+        </div>
+        <div style="padding:0 16px 10px">
+          <button class="picon-btn locate-btn" onclick="window.refreshLocation()" aria-label="Refresh my location"><img src="Assets/Vectors/location_refresh.png" alt=""/></button>
         </div>
         <div id="searchbar" class="searchbar" style="display:none">
           <input id="searchBox" placeholder="What's poppin near me?" oninput="onSearch()"/>
@@ -349,6 +359,22 @@ function categoryFor(tagRow) {
   return ACTIVITY_CATEGORIES.find(c => c.keywords.some(k => lower.includes(k))) || null;
 }
 
+// Maps each live-activity picker emoji (ACTIVITY_ICON_SET, further down) to one of the 8
+// ACTIVITY_CATEGORIES, so a live meetup's pulse ring + preview pill can carry that category's
+// color. The picker emojis aren't the same glyphs as the category emojis, so this is an
+// explicit lookup rather than an emoji match.
+const LIVE_ICON_CATEGORY = {
+  '🎸': 'arts', '🥏': 'sports', '🍕': 'food', '🌇': 'being', '♟️': 'sports', '📚': 'work',
+  '🐕': 'nature', '🎨': 'arts', '🧘': 'sports', '⚽': 'sports', '📷': 'arts', '🎤': 'arts'
+};
+// Color a live meetup should tint its pulse/pill — its icon's category color, or App Green as
+// a fallback for photo posts (no icon) and any unmapped emoji.
+function meetupColor(m) {
+  const catId = m && m.icon ? LIVE_ICON_CATEGORY[m.icon] : null;
+  const cat = catId ? ACTIVITY_CATEGORIES.find(c => c.id === catId) : null;
+  return cat ? cat.color : '#1FBF6B';
+}
+
 // Icon language for list cards. Keyword-matched (not exact-match) because most real POPS
 // only have the CSV's raw amenities_required/permitted_amenities text ("Trees on Street",
 // "Water Feature", etc.), not the hand-curated slugs the 3 pilot spaces use.
@@ -382,6 +408,15 @@ function amenityIconsFor(p) {
     if (found && !icons.includes(found.icon)) icons.push(found.icon);
   });
   return icons.slice(0, 4);
+}
+
+// Used when rendering free-text user submissions (wishes.tag for kind='wish') back onto the
+// page — unlike activity tags/names elsewhere, this field is genuinely open-ended text, so it
+// needs escaping before going into innerHTML.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
 }
 
 // Batch Street View photos, sourced externally and uploaded straight to the 'streetview'
@@ -650,6 +685,24 @@ function requestLocation() {
   );
 }
 
+// Explicit "recenter on me" tap (the map header's locate button) — location is otherwise
+// only ever checked once, at load, and never updates again as the user actually moves.
+// Distinct from requestLocation(): this always re-centers the map immediately, regardless of
+// search/filter state (loadList's own re-centering only kicks in with none active); the point
+// of a recenter button is that it unconditionally recenters, same as any map app's.
+window.refreshLocation = function () {
+  if (!navigator.geolocation) { alert('Location services are not available on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      renderUserLocationMarker();
+      if (leafletMap) leafletMap.setView([currentLocation.lat, currentLocation.lng], 15, { animate: true });
+    },
+    () => { alert('Could not get your location. Check that location access is enabled for this site.'); },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+};
+
 window.enterApp = function () {
   // Ask for location FIRST, before any DOM/map work, while the tap gesture is freshest.
   // iOS Safari ties getCurrentPosition() to a live user gesture and is stricter than
@@ -774,11 +827,13 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
   list.forEach(p => {
     if (p.lat == null || p.lng == null) return;
     const tags = (activityTagsByPops[p.id] || []).slice().sort((a, b) => b.votes - a.votes);
-    const hasLiveActivity = !!activeMeetupsByPops[p.id];
-    // A live activity always pulses green, taking priority over the generic
-    // recently-active indicator (which uses the pin's own liveliness color).
+    const meetup = activeMeetupsByPops[p.id];
+    const hasLiveActivity = !!meetup;
+    // A live activity always pulses, taking priority over the generic recently-active
+    // indicator (which uses the pin's own liveliness color). The pulse color now reflects the
+    // activity's category (via its picked emoji) rather than a flat green.
     const isPulsing = hasLiveActivity || recentlyActiveSet.has(p.id);
-    const ringColor = hasLiveActivity ? '#1FBF6B' : p._color;
+    const ringColor = hasLiveActivity ? meetupColor(meetup) : p._color;
     const icon = activePinIcon(p._color, isPulsing, ringColor);
     const marker = L.marker([p.lat, p.lng], { icon }).addTo(markerLayer);
     markerById[p.id] = marker;
@@ -790,9 +845,16 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
       : '<span style="color:#B0AEA6">Nothing logged yet</span>';
     const photoUrl = streetviewUrl(p);
     const photoStyle = photoUrl ? ' style="background-image:url(\'' + photoUrl + '\')"' : '';
+    // Live activity gets a little pill over the photo, tinted the same category color as the
+    // pin's pulse, so a passing tap on the pin surfaces what's happening without opening the
+    // full profile.
+    const livePillHtml = hasLiveActivity
+      ? '<span class="pin-live-pill" style="background:' + meetupColor(meetup) + '">' +
+          (meetup.icon ? meetup.icon + ' ' : '') + escapeHtml(meetup.activity) + '</span>'
+      : '';
     marker.bindPopup(
       '<div class="pin-preview" onclick="window.openProfile(\'' + p.id + '\')">' +
-        '<div class="pin-preview-photo"' + photoStyle + '></div>' +
+        '<div class="pin-preview-photo"' + photoStyle + '>' + livePillHtml + '</div>' +
         '<div class="pin-preview-body">' +
           '<p class="pin-preview-name">' + p.name + '</p>' +
           '<p class="pin-preview-meta">' + metaHtml + '</p>' +
@@ -947,7 +1009,7 @@ async function loadList(searchText) {
       ? icons.map(i => '<span>' + i + '</span>').join(' ')
       : '<span style="color:#B0AEA6">Nothing logged yet</span>';
     const interactionsHtml = p.interactions
-      ? ' <span style="color:#B0AEA6">&middot; ' + p.interactions + '</span>'
+      ? ' <span style="color:#B0AEA6">&middot; ' + p.interactions + ' visits</span>'
       : '';
     const photoUrl = streetviewUrl(p);
     // Only the background-image layer is set inline, never the background shorthand — the
@@ -1136,11 +1198,36 @@ window.onSearch = function () { loadList(document.getElementById('searchBox').va
 let pendingRating = {};
 let profileActivities = [];
 let profileMedia = [];
+let profileWishes = []; // free-text "what would make this better?" answers from Add-your-read
 let selectedActivityCategory = null;
 // No polygon data for 389 of the 392 real POPS (only the 3 pilots have a hand-drawn
-// GeoJSON boundary), so "inside" for Live Activity is a simple radius check against the
-// POPS's point coordinate — same distanceMeters() already used for walking-distance.
-const LIVE_ACTIVITY_RADIUS_METERS = 30;
+// GeoJSON boundary), so "inside" for anything geolocked is a simple radius check against the
+// POPS's point coordinate — same distanceMeters() already used for walking-distance. Shared
+// by Live Activity and Add-your-read (see requireAtPops below) — not just live activity
+// anymore, hence the generic name.
+const GEOFENCE_RADIUS_METERS = 30;
+
+// Shared gate for anything that requires actually being at the POPS. Resolves a fresh
+// position, alerts and stops if it's not real/close enough, otherwise updates currentLocation
+// and runs onInside(). actionLabel fills in the two alert messages, e.g. "post a live
+// activity here" / "add your read of this space".
+function requireAtPops(actionLabel, onInside) {
+  if (!currentPops) return;
+  if (!navigator.geolocation) { alert('Location services are not available on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const meters = distanceMeters(pos.coords.latitude, pos.coords.longitude, currentPops.lat, currentPops.lng);
+      if (meters > GEOFENCE_RADIUS_METERS) {
+        alert('You need to be at ' + currentPops.name + ' to ' + actionLabel + '.');
+        return;
+      }
+      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      onInside();
+    },
+    () => { alert('Could not get your location. Enable location access to ' + actionLabel + '.'); },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
 
 window.openProfile = async function (id) {
   let p = allPops.find(x => x.id === id);
@@ -1164,6 +1251,13 @@ window.openProfile = async function (id) {
   profileActivities = activityRows || [];
   // Color reflects this space's own logged activity too, so it's computed after that fetch.
   const color = vibeColor(computeLiveliness(p, avg, profileActivities));
+
+  // Free-text "what would make this better?" answers, submitted with a read (kind='wish',
+  // as opposed to the kind='activity' rows above). Shown back on the profile.
+  const { data: wishRows } = supabase
+    ? await supabase.from('wishes').select('*').eq('pops_id', p.id).eq('kind', 'wish').order('created_at', { ascending: false })
+    : { data: [] };
+  profileWishes = wishRows || [];
 
   const { data: mediaRows } = supabase
     ? await supabase.from('media').select('*').eq('pops_id', p.id).order('created_at', { ascending: false })
@@ -1212,7 +1306,7 @@ function renderHappeningTab(p, avg, color) {
       '<p class="block-label" style="margin:8px 0">Activities Here</p>' +
       '<button class="mini-add-btn" onclick="window.toggleActivityForm()">+ What are you up to?</button>' +
     '</div>' +
-    (p.interactions ? '<p class="interactions-stat">' + p.interactions + ' things logged here</p>' : '') +
+    (p.interactions ? '<p class="interactions-stat">' + p.interactions + ' visits logged here</p>' : '') +
     '<div class="activity-grid" id="activityGrid"></div>' +
     '<div id="activityForm" style="display:none;margin-bottom:16px">' +
       '<div class="filter-row" id="activityCategoryPicker"></div>' +
@@ -1232,7 +1326,14 @@ function renderHappeningTab(p, avg, color) {
       '<textarea id="betterInput" rows="2" placeholder="Optional" style="width:100%;box-sizing:border-box;border:1px solid var(--line);' +
         'border-radius:10px;padding:10px;font-family:var(--font-body);font-size:13px;margin-bottom:12px"></textarea>' +
       '<button class="btn-space" style="background:' + color + '" onclick="window.submitVibeRating()">Submit my read</button>' +
-    '</div>';
+    '</div>' +
+
+    (profileWishes.length
+      ? '<p class="block-label">What people want to see</p>' +
+        '<div style="margin-bottom:8px">' +
+          profileWishes.map(w => '<p class="space-detail" style="margin-bottom:8px">&#8220;' + escapeHtml(w.tag) + '&#8221;</p>').join('') +
+        '</div>'
+      : '');
 
   renderActivityGrid();
   renderLiveActivityBanner(p);
@@ -1326,11 +1427,13 @@ function attachSlider(key) {
 // once "Add your read of the space!" is tapped, per the framework's explicit
 // submission-state toggle (not always-draggable, which is what was built before).
 window.startRatingSubmission = function () {
-  document.getElementById('ratingStartWrap').style.display = 'none';
-  document.getElementById('ratingSubmitForm').style.display = 'block';
-  ['safety', 'crowd', 'welcome'].forEach(key => {
-    document.getElementById('handle-' + key).style.display = 'block';
-    attachSlider(key);
+  requireAtPops('add your read of this space', () => {
+    document.getElementById('ratingStartWrap').style.display = 'none';
+    document.getElementById('ratingSubmitForm').style.display = 'block';
+    ['safety', 'crowd', 'welcome'].forEach(key => {
+      document.getElementById('handle-' + key).style.display = 'block';
+      attachSlider(key);
+    });
   });
 };
 
@@ -1433,21 +1536,7 @@ window.lookInside = function () {
 };
 
 window.startLiveActivity = function () {
-  if (!currentPops) return;
-  if (!navigator.geolocation) { alert('Location services are not available on this device.'); return; }
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      const meters = distanceMeters(pos.coords.latitude, pos.coords.longitude, currentPops.lat, currentPops.lng);
-      if (meters > LIVE_ACTIVITY_RADIUS_METERS) {
-        alert('You need to be at ' + currentPops.name + ' to post a live activity here.');
-        return;
-      }
-      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      window.openDropPin();
-    },
-    () => { alert('Could not get your location. Enable location access to post a live activity.'); },
-    { enableHighAccuracy: true, timeout: 10000 }
-  );
+  requireAtPops('post a live activity here', () => window.openDropPin());
 };
 
 window.backToList = function () {
