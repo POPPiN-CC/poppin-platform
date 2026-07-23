@@ -553,6 +553,33 @@ function walkMinutesTo(pop) {
   return meters / WALK_METERS_PER_MINUTE;
 }
 
+// iOS Safari silently ignores getCurrentPosition() calls that aren't triggered by a direct
+// user gesture — it never even shows the permission prompt. So this can't just run at module
+// load; it has to be called from inside a real click handler (window.enterApp, tied to the
+// "Let's go" button tap). Once permission is granted, later calls (e.g. on a returning visit,
+// where enterApp() fires automatically) work fine without a fresh gesture.
+function requestLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      renderUserLocationMarker();
+      // enterApp's own loadList('') call almost always runs before this resolves — geolocation
+      // is async and typically slower than the initial render — so the "5 closest" cap never
+      // saw a location the first time. Re-run once it's actually available, but only if the
+      // app is already showing (no point re-fetching while still on the onboarding screen).
+      if (document.getElementById('mainApp').style.display !== 'none') {
+        loadList(document.getElementById('searchBox').value);
+      }
+    },
+    err => {
+      currentLocation = null;
+      console.warn('Location unavailable:', err.message);
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
 window.enterApp = function () {
   document.getElementById('onboarding').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
@@ -561,6 +588,7 @@ window.enterApp = function () {
   applySheetSnap('half', false);
   initMap();
   renderUserLocationMarker();
+  requestLocation();
   // Load active meetups first so the initial marker render already knows which POPS
   // pins should pulse — otherwise pulsing would only appear after some later reload.
   loadMeetups().then(() => loadList(''));
@@ -569,22 +597,6 @@ window.enterApp = function () {
 if (localStorage.getItem('poppin_onboarded')) {
   window.enterApp();
 }
-
-navigator.geolocation && navigator.geolocation.getCurrentPosition(
-  pos => {
-    currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    renderUserLocationMarker();
-    // enterApp's own loadList('') call almost always runs before this resolves — geolocation
-    // is async and typically slower than the initial render — so the "5 closest" cap never
-    // saw a location the first time. Re-run once it's actually available, but only if the
-    // app is already showing (no point re-fetching while still on the onboarding screen).
-    if (document.getElementById('mainApp').style.display !== 'none') {
-      loadList(document.getElementById('searchBox').value);
-    }
-  },
-  () => { currentLocation = null; },
-  { enableHighAccuracy: true, timeout: 8000 }
-);
 
 window.toggleSearch = function () {
   const bar = document.getElementById('searchbar');
