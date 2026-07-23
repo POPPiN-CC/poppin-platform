@@ -577,6 +577,15 @@ function addVideoBillboard(pin) {
   videoEl.loop = true;
   videoEl.playsInline = true;
   videoEl.crossOrigin = 'anonymous';
+  // Never attaching this to the DOM (the old code) works fine as a texture source on desktop
+  // browsers, but iOS Safari won't actually decode/advance frames for a <video> that isn't
+  // part of the live document — it'll happily fire loadedmetadata (so the sprite gets created,
+  // which is why this wasn't the "white frame" bug) but playback itself never really starts,
+  // so the texture just sits frozen. display:none is also unreliable here (some browsers
+  // throttle/pause decode for it too) — positioned off-screen instead, contained by #app's
+  // own overflow:hidden so it can't create page-level horizontal scroll.
+  videoEl.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px';
+  appEl.appendChild(videoEl);
   videoEl.addEventListener('loadedmetadata', () => {
     const texture = new THREE.VideoTexture(videoEl);
     texture.colorSpace = THREE.SRGBColorSpace;
