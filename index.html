@@ -75,7 +75,7 @@
   .leaflet-popup-content-wrapper{border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.18)}
   .leaflet-popup-content{margin:0;width:220px !important}
   .pin-preview{display:flex;flex-direction:column;cursor:pointer;font-family:var(--font-body)}
-  .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0}
+  .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0;background-size:cover;background-position:center}
   .pin-preview .pin-preview-body{padding:10px 12px}
   .pin-preview .pin-preview-name{font-family:var(--font-display);font-weight:700;font-size:13px;margin:0;color:var(--ink)}
   .pin-preview .pin-preview-meta{font-size:11px;color:var(--muted);margin:3px 0 0}
@@ -84,7 +84,7 @@
   .accentbar{width:6px;height:44px;border-radius:3px;flex-shrink:0}
   .cname{font-weight:700;font-size:14px;margin:0;font-family:var(--font-display);color:var(--ink)}
   .cmeta{font-size:13px;color:var(--muted);margin:4px 0 0;letter-spacing:1px}
-  .card-photo{width:48px;height:48px;border-radius:10px;background:#E9E7E1;flex-shrink:0;margin-left:auto}
+  .card-photo{width:48px;height:48px;border-radius:10px;background:#E9E7E1;flex-shrink:0;margin-left:auto;background-size:cover;background-position:center}
   .empty{font-size:13px;color:var(--muted);padding:20px 16px;text-align:center}
   .backbtn{background:none;border:none;font-size:20px;cursor:pointer;padding:14px 16px}
   .photo{height:180px;background:#E9E7E1;margin:0;border-radius:0}
@@ -112,7 +112,7 @@
 
   /* ---------- redesigned profile: two tabs, drag-to-rate ---------- */
   #profileView{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff}
-  .ptop{position:relative;height:120px;background:#E3DDCC}
+  .ptop{position:relative;height:160px;background:#E3DDCC;background-size:cover;background-position:center}
   .picon-btn{width:28px;height:28px;border-radius:50%;background:#fff;border:none;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
   .picon-btn img{width:16px;height:16px;object-fit:contain}
   /* Look Inside / Live Activity only — icon 2.5x (16px->40px), button grown just enough to
@@ -382,6 +382,20 @@ function amenityIconsFor(p) {
     if (found && !icons.includes(found.icon)) icons.push(found.icon);
   });
   return icons.slice(0, 4);
+}
+
+// Batch Street View photos, sourced externally and uploaded straight to the 'streetview'
+// bucket as {pops_number}.jpg — no pops column for this, the path is fully derivable, so
+// dropping a correctly named file into the bucket is the entire integration step. Returns
+// null (not a broken-image URL) when there's no pops_number or no supabase client, so callers
+// can cleanly fall back to the existing gray placeholder instead of showing a broken image.
+function streetviewUrl(p) {
+  if (!p.pops_number || !supabase) return null;
+  // The 3 pilots' cover photos were sourced separately from the 392 CSV-derived spaces and
+  // came out as .jpeg rather than .jpg — pilots are exactly the rows with a synthetic
+  // 'PILOT-<slug>' pops_number, so that's what branches the extension.
+  const ext = p.pops_number.startsWith('PILOT-') ? '.jpeg' : '.jpg';
+  return supabase.storage.from('streetview').getPublicUrl(p.pops_number + ext).data.publicUrl;
 }
 
 // activityTags: rows from getActivityTagsByPops[popsId], already vote-sorted by the caller.
@@ -774,9 +788,11 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
     const metaHtml = icons.length
       ? icons.map(i => '<span>' + i + '</span>').join(' ')
       : '<span style="color:#B0AEA6">Nothing logged yet</span>';
+    const photoUrl = streetviewUrl(p);
+    const photoStyle = photoUrl ? ' style="background-image:url(\'' + photoUrl + '\')"' : '';
     marker.bindPopup(
       '<div class="pin-preview" onclick="window.openProfile(\'' + p.id + '\')">' +
-        '<div class="pin-preview-photo"></div>' +
+        '<div class="pin-preview-photo"' + photoStyle + '></div>' +
         '<div class="pin-preview-body">' +
           '<p class="pin-preview-name">' + p.name + '</p>' +
           '<p class="pin-preview-meta">' + metaHtml + '</p>' +
@@ -933,11 +949,17 @@ async function loadList(searchText) {
     const interactionsHtml = p.interactions
       ? ' <span style="color:#B0AEA6">&middot; ' + p.interactions + '</span>'
       : '';
+    const photoUrl = streetviewUrl(p);
+    // Only the background-image layer is set inline, never the background shorthand — the
+    // class's own gray background-color stays underneath, so a photo that 404s (not
+    // uploaded yet) or a POPS with no photo at all just falls back to the plain gray square
+    // with no broken-image icon and no extra JS/onerror handling needed.
+    const photoStyle = photoUrl ? ' style="background-image:url(\'' + photoUrl + '\')"' : '';
     return '<button class="card" onclick="window.focusPopOnMap(\'' + p.id + '\')">' +
       '<div class="accentbar" style="background:' + color + '"></div>' +
       '<div style="flex:1;min-width:0"><p class="cname">' + p.name + '</p>' +
       '<p class="cmeta">' + metaHtml + interactionsHtml + '</p></div>' +
-      '<div class="card-photo"></div>' +
+      '<div class="card-photo"' + photoStyle + '></div>' +
       '</button>';
   }).join('');
 }
@@ -1152,8 +1174,10 @@ window.openProfile = async function (id) {
   const view = document.getElementById('profileView');
   view.style.display = 'block';
 
+  const heroPhotoUrl = streetviewUrl(p);
+  const heroPhotoStyle = heroPhotoUrl ? ' style="background-image:url(\'' + heroPhotoUrl + '\')"' : '';
   view.innerHTML =
-    '<div class="ptop">' +
+    '<div class="ptop"' + heroPhotoStyle + '>' +
       '<button class="picon-btn" style="position:absolute;top:10px;left:10px" onclick="window.backToList()" aria-label="Back">&#8592;</button>' +
       '<button class="picon-btn" style="position:absolute;top:10px;right:10px" aria-label="Save">&#9825;</button>' +
       '<p class="pscript-tag" style="position:absolute;bottom:10px;left:12px">' + (p.description || 'a real spot on campus') + '</p>' +
