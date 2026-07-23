@@ -1,0 +1,165 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95618933050001,
+          40.755585831991056
+        ]
+      },
+      "properties": {
+        "name": "The Cafe at Cornell Tech",
+        "type": "cafe",
+        "address": "2 W Loop Rd, New York, NY 10044",
+        "notes": "On-campus cafe inside Cornell Tech itself. Confirmed hours Mon-Fri 8am-7pm, Sat-Sun 11am-5pm. Coffee, sandwiches, salads, pizza, beer and wine, outdoor patio seating."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.94995556965694,
+          40.76217484563355
+        ]
+      },
+      "properties": {
+        "name": "Nisi",
+        "type": "restaurant",
+        "address": "425 Main St, Roosevelt Island, NY 10044",
+        "notes": "Greek-style diner near the Chapel of the Good Shepherd. Full-service coffee bar, omelets, sandwiches, vegan options, build-your-own burger menu."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95272232962259,
+          40.7588184334231
+        ]
+      },
+      "properties": {
+        "name": "Riverwalk Bar and Grill",
+        "type": "restaurant/bar",
+        "address": "East Rd, Roosevelt Island, NY 10044",
+        "notes": "Repeatedly cited as one of the only true sit-down bar and restaurant options actually on the island."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95258429945903,
+          40.75933139217555
+        ]
+      },
+      "properties": {
+        "name": "Piccolo Trattoria",
+        "type": "restaurant",
+        "address": "Main St, Roosevelt Island, NY 10044",
+        "notes": "Italian, pizza."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.94891751825803,
+          40.763364537991414
+        ]
+      },
+      "properties": {
+        "name": "China 1 Kitchen",
+        "type": "restaurant",
+        "address": "Main St, Roosevelt Island, NY 10044",
+        "notes": "Chinese food."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.94939684391457,
+          40.7628792469255
+        ]
+      },
+      "properties": {
+        "name": "Bread and Butter",
+        "type": "cafe/bakery",
+        "address": "579 Main St, Roosevelt Island, NY 10044",
+        "notes": "Bakery and cafe."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95090172835579,
+          40.76118593851427
+        ]
+      },
+      "properties": {
+        "name": "Subway",
+        "type": "fast food",
+        "address": "Main St, Roosevelt Island, NY 10044",
+        "notes": "Chain sandwich shop."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95268528080848,
+          40.758745861577204
+        ]
+      },
+      "properties": {
+        "name": "Granny Annie's Bar and Kitchen",
+        "type": "bar/restaurant",
+        "address": "425 Main St, New York, NY 10044",
+        "notes": ""
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.94957974784431,
+          40.761999696011884
+        ]
+      },
+      "properties": {
+        "name": "ME Mediterranean Eatery",
+        "type": "restaurant",
+        "address": "548 Main St, New York, NY 10044",
+        "notes": ""
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.95285374000534,
+          40.75941407628894
+        ]
+      },
+      "properties": {
+        "name": "Starbucks Coffee Company",
+        "type": "cafe",
+        "address": "455 Main St, New York, NY 10044",
+        "notes": ""
+      }
+    }
+  ]
+}
