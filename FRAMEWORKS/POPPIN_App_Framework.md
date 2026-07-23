@@ -86,7 +86,7 @@ User submitted responses to the space
 
 - Slider inputs under the heading "Add your read of the space!"
 
-  - Unsafe to Safe
+  - Safe to Unsafe
 
   - Open Seating to Couldn't Find a Spot
 
@@ -183,7 +183,7 @@ This screen has two tabs below the name: 'What's Happening' and 'The Space'. Nex
 
 2.  Three sliders, each showing a gradient bar from one end to the other:
 
-    - Unsafe to Safe
+    - Safe to Unsafe
 
     - Open Seating to Couldn't Find a Spot
 

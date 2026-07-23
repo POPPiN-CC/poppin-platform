@@ -195,6 +195,37 @@ update pops set scan_slug = 'tata-green' where name = 'Tata Green';
 -- has a real submission form asking the user to pick a category.
 alter table wishes add column category text;
 
+-- Migration: Phase 6 (computed Liveliness, per FRAMEWORKS/POPPIN_App_Framework.md:75).
+-- Liveliness is a weighted composite of the crowd rating + logged activity + a noise-sensor
+-- reading. There's no sensor hardware in the pilot, so `noise` (0-100) comes from simulated
+-- data; it stays null until that data is generated, and computeLiveliness() in index.html
+-- redistributes its weight to the other signals while it's null.
+alter table pops add column if not exists noise int check (noise between 0 and 100);
+
+-- Migration: simulated-dataset generator (scripts/generate-pops-seed.js). pops_number is the
+-- CSV's own stable unique id (Assets/Data/Privately_Owned_Public_Spaces.csv, verified unique
+-- across all 392 rows) — kept as provenance and as the deterministic seed the generator
+-- derives each space's uuid and simulated values from, so re-running it is always idempotent.
+-- Pilots (not in the CSV) get a synthetic 'PILOT-<scan-slug>' value instead.
+-- `if not exists` on both of these: Supabase's SQL Editor runs a pasted multi-statement block
+-- as one transaction, so one already-applied ALTER TABLE mid-paste would otherwise roll back
+-- every statement after it too, silently.
+alter table pops add column if not exists pops_number text;
+
+-- Migration: interactions — supersedes the `popularity` column from the same session (never
+-- applied, safe to drop): a hidden 0-100 abstract score turned out to be the wrong shape.
+-- interactions is a real, meaningful count instead — "how many times has something actually
+-- been logged here" (each repeat post of the same activity tag already increments
+-- wishes.votes; interactions is that idea taken seriously and given a realistic range, a few
+-- for obscure spaces up to 100+ for standouts) — displayable to users, not just a hidden
+-- backend signal. It's also the shared cause behind noise/crowd/rating-count generation
+-- (see generate-pops-seed.js) — averaging several independently-jittered mid-range signals
+-- mathematically pulls the Liveliness composite toward the middle even harder than any one
+-- signal alone, which was the original source of everything clustering together on the scale;
+-- a shared real factor behind all of them is what actually produces spread.
+alter table pops drop column if exists popularity;
+alter table pops add column if not exists interactions int check (interactions >= 0);
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values

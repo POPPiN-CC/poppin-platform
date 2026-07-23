@@ -37,9 +37,10 @@ The current build is a live pilot centered on 3 real, self-scanned Cornell Tech 
 poppin-platform/
   index.html                        the main app
   supabase-schema.sql                run this first, creates every table and bucket (includes all migrations to date)
-  pops-seed.sql                      generated seed data — do not hand-edit, re-run the generator instead
+  pops-seed.sql                      generated seed data (the 395 spaces themselves) — do not hand-edit, re-run the generator instead
+  pops-simulated-data.sql            generated seed data (simulated ratings + activities for all 395 spaces, see below) — do not hand-edit
   scripts/
-    generate-pops-seed.js            reads Assets/Data + the 3 pilot GeoJSONs, writes pops-seed.sql
+    generate-pops-seed.js            reads Assets/Data + the 3 pilot GeoJSONs, writes both seed files above
   FRAMEWORKS/                        the project's living spec: overall app framework and per-feature frameworks
   Assets/
     Data/                            the official NYC POPS dataset (CSV), source of truth for the 389 non-pilot spaces
@@ -51,13 +52,19 @@ poppin-platform/
 
 ## Getting it running
 
-1. Create a Supabase project, then in the SQL Editor run, in order: `supabase-schema.sql`, then `pops-seed.sql`
+1. Create a Supabase project, then in the SQL Editor run, in order: `supabase-schema.sql`, then `pops-seed.sql`, then `pops-simulated-data.sql`
 2. Copy your project's URL and anon public key from Settings → API
 3. Paste both into the two placeholder constants near the top of `index.html`'s script (and `3d-space/index.html`'s, if you want the 3D prototype pointed at the same project)
 4. Push everything to GitHub, turn on GitHub Pages (Settings → Pages → main branch, root folder)
 5. Open the real `https://` URL, never open `index.html` directly from disk, modern browsers block the app's module system under the `file://` protocol entirely
 
-If the CSV or the pilot GeoJSONs ever change, re-run `node scripts/generate-pops-seed.js` to regenerate `pops-seed.sql` rather than hand-editing it.
+If the CSV or the pilot GeoJSONs ever change, re-run `node scripts/generate-pops-seed.js` to regenerate both `pops-seed.sql` and `pops-simulated-data.sql` rather than hand-editing them. Both files are idempotent (`on conflict ... do nothing`) and never delete anything, so re-running them against a database that already has this data is always safe.
+
+**If your `pops` table already has rows from before this generator existed** (random ids, not the deterministic ones this generator now produces), run `truncate pops cascade;` once first — otherwise you'll end up with duplicate spaces alongside the new deterministic-id rows. Not needed on a fresh project.
+
+### Simulated data
+
+There are no noise sensors and, early on, very little real user data — but pin color is supposed to always mean something true. So `pops-simulated-data.sql` seeds educated-guess ratings and activity rows for every space, derived from each space's real `Public_Space_Type` and amenities (a leafy Residential Plaza reads calm; a Subway-adjacent Retail Plaza reads loud and busy), plus a simulated `noise` value on each `pops` row (real noise-sensor data doesn't exist for this pilot). All of it is deterministic — reasoning documented in the header comment and rule engine of `scripts/generate-pops-seed.js` — and real user activity blends in on top as the app gets used, including on the 3 active pilot spaces.
 
 ## What's real right now versus what's still ahead
 

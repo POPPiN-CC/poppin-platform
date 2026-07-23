@@ -108,6 +108,7 @@
   .mini-add-btn{font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--green);
     background:var(--green-tint);border:none;border-radius:14px;padding:5px 10px;cursor:pointer}
   .activity-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+  .interactions-stat{font-family:var(--font-body);font-size:11px;color:#B0AEA6;margin:-4px 0 10px}
   .activity-chip{font-family:var(--font-body);font-size:12px;font-weight:600;color:#fff;
     padding:8px 12px;border-radius:12px}
   .slider-label{font-size:10px;color:#8A8A82;font-family:var(--font-body);display:flex;justify-content:space-between;margin-bottom:5px}
@@ -222,6 +223,8 @@
           <div class="filter-row" id="filterLiveliness"></div>
           <h4>Activities</h4>
           <div class="filter-row" id="filterActivities"></div>
+          <h4>Sort</h4>
+          <div class="filter-row" id="filterSort"></div>
         </div>
       </div>
 
@@ -370,7 +373,7 @@ function activityIconsFor(activityTags) {
   return icons.slice(0, 3);
 }
 
-const activeFilters = { distance: null, liveliness: null, activities: new Set() };
+const activeFilters = { distance: null, liveliness: null, activities: new Set(), sort: null };
 
 // Batched (one query for every POPS at once) rather than one query per POPS — with all
 // ~392 real spaces now rendering as individual pins (see loadList), N+1 queries per pin
@@ -427,6 +430,8 @@ function renderFilterChips() {
   document.getElementById('filterActivities').innerHTML = ACTIVITY_CATEGORIES.map(c =>
     '<button class="filter-chip" data-id="' + c.id + '" onclick="window.toggleActivityFilter(\'' + c.id + '\')">' + c.emoji + ' ' + c.label + '</button>'
   ).join('');
+  document.getElementById('filterSort').innerHTML =
+    '<button class="filter-chip" data-v="popular" onclick="window.setSortFilter(\'popular\')">&#128293; Most Popular</button>';
   syncFilterChipStates();
 }
 
@@ -434,6 +439,7 @@ function syncFilterChipStates() {
   document.querySelectorAll('#filterDistance .filter-chip').forEach(b => b.classList.toggle('on', Number(b.dataset.min) === activeFilters.distance));
   document.querySelectorAll('#filterLiveliness .filter-chip').forEach(b => b.classList.toggle('on', b.dataset.v === activeFilters.liveliness));
   document.querySelectorAll('#filterActivities .filter-chip').forEach(b => b.classList.toggle('on', activeFilters.activities.has(b.dataset.id)));
+  document.querySelectorAll('#filterSort .filter-chip').forEach(b => b.classList.toggle('on', b.dataset.v === activeFilters.sort));
 }
 
 window.setDistanceFilter = function (mins) {
@@ -448,6 +454,11 @@ window.setLivelinessFilter = function (v) {
 };
 window.toggleActivityFilter = function (id) {
   if (activeFilters.activities.has(id)) activeFilters.activities.delete(id); else activeFilters.activities.add(id);
+  syncFilterChipStates();
+  loadList(document.getElementById('searchBox').value);
+};
+window.setSortFilter = function (v) {
+  activeFilters.sort = activeFilters.sort === v ? null : v;
   syncFilterChipStates();
   loadList(document.getElementById('searchBox').value);
 };
@@ -528,11 +539,35 @@ async function getAverages(popsId) {
   return { safety: Math.round(sum.safety / n), crowd: Math.round(sum.crowd / n), welcome: Math.round(sum.welcome / n), count: n };
 }
 
-// Liveliness (what colors map pins) is meant to be a computed metric — crowdedness plus
-// logged activity — not a raw slider. Using crowd alone as the proxy for now; folding in
-// activity/trace counts is tracked as later polish, not done here.
-function computeLiveliness(avg) {
-  return avg.crowd;
+// Liveliness (0-100, what colors every pin) is a weighted composite of three signals, per
+// FRAMEWORKS/POPPIN_App_Framework.md:75 — "a composite of the crowdedness of the space (the
+// idea is through noise sensors this is approximated) and the amount of activity and
+// engagement logged in a space through this platform." The three inputs:
+//   1. crowd    — the "Open Seating -> Couldn't Find a Spot" rating average (real user data)
+//   2. noise    — a noise-sensor reading 0-100. No sensor hardware in this pilot, so it comes
+//                 from simulated data (pops.noise) and is null until that data is generated.
+//   3. activity — how much activity has been logged here on the app, saturating to 100.
+// Any signal that's absent (a space with no ratings, or no noise value yet) drops out and its
+// weight is redistributed across the signals we do have, so the number stays honest as data
+// fills in — before the simulated noise data lands, this is simply crowd + activity.
+const LIVELINESS_WEIGHTS = { crowd: 0.4, noise: 0.35, activity: 0.25 };
+const ACTIVITY_SATURATION_VOTES = 20; // this many logged activity-votes reads as fully lively
+
+function activityLivelinessScore(activityRows) {
+  const votes = (activityRows || []).reduce((s, r) => s + (r.votes || 0), 0);
+  if (votes <= 0) return null; // nothing logged is absence of a signal, not "zero lively"
+  return Math.min(100, (votes / ACTIVITY_SATURATION_VOTES) * 100);
+}
+
+function computeLiveliness(pop, avg, activityRows) {
+  const parts = []; // [weight, value] for each signal we actually have data for
+  if (avg && avg.count > 0) parts.push([LIVELINESS_WEIGHTS.crowd, avg.crowd]);
+  if (pop && pop.noise != null) parts.push([LIVELINESS_WEIGHTS.noise, pop.noise]);
+  const act = activityLivelinessScore(activityRows);
+  if (act != null) parts.push([LIVELINESS_WEIGHTS.activity, act]);
+  if (!parts.length) return 50; // no signal at all -> neutral middle of the scale
+  const wsum = parts.reduce((s, [w]) => s + w, 0);
+  return parts.reduce((s, [w, v]) => s + (w / wsum) * v, 0);
 }
 
 // Real straight-line distance in meters (Haversine), then a rough walking-minutes
@@ -633,25 +668,15 @@ function initMap() {
   leafletMap.on('click', () => { focusPopId = null; });
 }
 
-const ACTIVITY_ICONS = [
-  { match: ['read', 'book'], icon: '📖' },
-  { match: ['laptop', 'work'], icon: '💻' },
-  { match: ['lunch', 'food', 'coffee'], icon: '☕' }
-];
-function iconForActivity(topTag) {
-  if (!topTag) return null;
-  const lower = topTag.toLowerCase();
-  const found = ACTIVITY_ICONS.find(a => a.match.some(m => lower.includes(m)));
-  return found ? found.icon : null;
-}
-
-function activePinIcon(color, ratingCount, activityIcon, isPulsing, ringColor) {
-  const size = Math.min(24 + Math.round(ratingCount * 1.5), 44);
-  const emoji = activityIcon ? '<span style="font-size:' + Math.round(size * 0.45) + 'px;line-height:1">' + activityIcon + '</span>' : '';
+// Fixed for now — pins previously sized by rating count and carried a small activity emoji;
+// both are on hold pending a design pass, so every pin renders as a plain same-size dot.
+const PIN_SIZE = 30;
+function activePinIcon(color, isPulsing, ringColor) {
+  const size = PIN_SIZE;
   const pulse = isPulsing ? '<div class="pulse-ring" style="--ring-color:' + (ringColor || color) + '"></div>' : '';
   return L.divIcon({
     html: '<div style="position:relative;width:' + size + 'px;height:' + size + 'px">' + pulse +
-      '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25)">' + emoji + '</div></div>',
+      '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25)"></div></div>',
     className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2]
   });
 }
@@ -709,13 +734,12 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
   list.forEach(p => {
     if (p.lat == null || p.lng == null) return;
     const tags = (activityTagsByPops[p.id] || []).slice().sort((a, b) => b.votes - a.votes);
-    const topTag = tags.length ? tags[0].tag : null;
     const hasLiveActivity = !!activeMeetupsByPops[p.id];
     // A live activity always pulses green, taking priority over the generic
     // recently-active indicator (which uses the pin's own liveliness color).
     const isPulsing = hasLiveActivity || recentlyActiveSet.has(p.id);
     const ringColor = hasLiveActivity ? '#1FBF6B' : p._color;
-    const icon = activePinIcon(p._color, p._count || 0, iconForActivity(topTag), isPulsing, ringColor);
+    const icon = activePinIcon(p._color, isPulsing, ringColor);
     const marker = L.marker([p.lat, p.lng], { icon }).addTo(markerLayer);
     markerById[p.id] = marker;
     // Same icon language as the list card — amenities + recent activities, not a
@@ -803,7 +827,7 @@ async function loadList(searchText) {
       if (mins === null || mins > activeFilters.distance) return false;
     }
     if (activeFilters.liveliness) {
-      const liveliness = computeLiveliness(r.avg);
+      const liveliness = computeLiveliness(r.p, r.avg, activityTagsByPops[r.p.id]);
       const band = liveliness < 35 ? 'quiet' : liveliness < 65 ? 'balanced' : 'lively';
       if (band !== activeFilters.liveliness) return false;
     }
@@ -816,24 +840,30 @@ async function loadList(searchText) {
   // Map shows every match (thinned for on-screen density, see thinMarkersForView) —
   // search/filters narrow the candidate set for both the map and the list together.
   updateMapMarkers(
-    filtered.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.avg)), _count: r.avg.count, _avg: r.avg })),
+    filtered.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.p, r.avg, activityTagsByPops[r.p.id])), _count: r.avg.count, _avg: r.avg })),
     activityTagsByPops,
     recentlyActiveSet
   );
 
   // The list itself is capped to the 5 closest by default, so it's not just as
   // overwhelming a wall as the unthinned map would be — but that cap only applies when
-  // browsing with no search/filters active; a real search or filter should show every match.
-  const hasSearchOrFilters = !!search || !!activeFilters.distance || !!activeFilters.liveliness || activeFilters.activities.size > 0;
+  // browsing with no search/filters/sort active; a real search, filter, or sort should show
+  // every match. Sort-by-popular composes with whatever other filters are active (it's just
+  // an ordering, not a narrowing), so it's applied after the default-cap branch, not inside it.
+  const hasSearchOrFilters = !!search || !!activeFilters.distance || !!activeFilters.liveliness || activeFilters.activities.size > 0 || !!activeFilters.sort;
   let listRows = filtered;
   if (!hasSearchOrFilters && currentLocation) {
     listRows = filtered.slice()
       .sort((a, b) => walkMinutesTo(a.p) - walkMinutesTo(b.p))
       .slice(0, 5);
+  } else if (activeFilters.sort === 'popular') {
+    listRows = filtered.slice().sort((a, b) => (b.p.interactions || 0) - (a.p.interactions || 0));
   }
 
   const titleEl = document.getElementById('sectionTitle');
-  if (hasSearchOrFilters) {
+  if (activeFilters.sort === 'popular' && !search && !activeFilters.distance && !activeFilters.liveliness && activeFilters.activities.size === 0) {
+    titleEl.textContent = 'Most popular spots';
+  } else if (hasSearchOrFilters) {
     titleEl.textContent = listRows.length + (listRows.length === 1 ? ' spot matches' : ' spots match');
   } else if (currentLocation && listRows.length > 0 && listRows.every(r => { const m = walkMinutesTo(r.p); return m !== null && m <= 10; })) {
     titleEl.textContent = listRows.length + (listRows.length === 1 ? ' spot' : ' spots') + ' within a 10-minute vibe check';
@@ -851,16 +881,19 @@ async function loadList(searchText) {
   // percentage badge. What replaces that text line: amenity + recent-activity emoji icons,
   // per the framework's icon language, with a square photo placeholder on the right.
   wrap.innerHTML = listRows.map(({ p, avg }) => {
-    const color = vibeColor(computeLiveliness(avg));
+    const color = vibeColor(computeLiveliness(p, avg, activityTagsByPops[p.id]));
     const actTags = (activityTagsByPops[p.id] || []).slice().sort((a, b) => b.votes - a.votes);
     const icons = amenityIconsFor(p).concat(activityIconsFor(actTags));
     const metaHtml = icons.length
       ? icons.map(i => '<span>' + i + '</span>').join(' ')
       : '<span style="color:#B0AEA6">Nothing logged yet</span>';
+    const interactionsHtml = p.interactions
+      ? ' <span style="color:#B0AEA6">&middot; ' + p.interactions + '</span>'
+      : '';
     return '<button class="card" onclick="window.focusPopOnMap(\'' + p.id + '\')">' +
       '<div class="accentbar" style="background:' + color + '"></div>' +
       '<div style="flex:1;min-width:0"><p class="cname">' + p.name + '</p>' +
-      '<p class="cmeta">' + metaHtml + '</p></div>' +
+      '<p class="cmeta">' + metaHtml + interactionsHtml + '</p></div>' +
       '<div class="card-photo"></div>' +
       '</button>';
   }).join('');
@@ -1048,13 +1081,14 @@ window.openProfile = async function (id) {
   const p = allPops.find(x => x.id === id);
   currentPops = p;
   const avg = await getAverages(p.id);
-  const color = vibeColor(computeLiveliness(avg));
   pendingRating = { safety: avg.safety, crowd: avg.crowd, welcome: avg.welcome };
 
   const { data: activityRows } = supabase
     ? await supabase.from('wishes').select('*').eq('pops_id', p.id).eq('kind', 'activity').order('votes', { ascending: false })
     : { data: [] };
   profileActivities = activityRows || [];
+  // Color reflects this space's own logged activity too, so it's computed after that fetch.
+  const color = vibeColor(computeLiveliness(p, avg, profileActivities));
 
   const { data: mediaRows } = supabase
     ? await supabase.from('media').select('*').eq('pops_id', p.id).order('created_at', { ascending: false })
@@ -1101,6 +1135,7 @@ function renderHappeningTab(p, avg, color) {
       '<p class="block-label" style="margin:8px 0">Activities Here</p>' +
       '<button class="mini-add-btn" onclick="window.toggleActivityForm()">+ What are you up to?</button>' +
     '</div>' +
+    (p.interactions ? '<p class="interactions-stat">' + p.interactions + ' things logged here</p>' : '') +
     '<div class="activity-grid" id="activityGrid"></div>' +
     '<div id="activityForm" style="display:none;margin-bottom:16px">' +
       '<div class="filter-row" id="activityCategoryPicker"></div>' +
@@ -1108,9 +1143,9 @@ function renderHappeningTab(p, avg, color) {
       '<button class="btn-primary" style="margin-bottom:0" onclick="window.submitActivity()">Post</button>' +
     '</div>' +
 
-    sliderHTML('safety', 'Unsafe', 'Safe', avg.safety) +
-    sliderHTML('crowd', 'Open seating', 'Crowded', avg.crowd) +
-    sliderHTML('welcome', 'Welcoming', 'Closed off', avg.welcome, true) +
+    sliderHTML('safety', 'Safe', 'Unsafe', avg.safety, true) +
+    sliderHTML('crowd', 'Open Seating', 'Couldn\'t Find a Spot', avg.crowd) +
+    sliderHTML('welcome', 'Welcoming', 'Unwelcome', avg.welcome, true) +
     '<p class="hint-text">White dot = everyone\'s average</p>' +
     '<div id="ratingStartWrap">' +
       '<button class="btn-space" style="background:' + color + '" onclick="window.startRatingSubmission()">Add your read of the space!</button>' +
@@ -1198,7 +1233,9 @@ function attachSlider(key) {
     let pct = ((clientX - rect.left) / rect.width) * 100;
     pct = Math.max(0, Math.min(100, pct));
     handle.style.left = pct + '%';
-    pendingRating[key] = key === 'welcome' ? Math.round(100 - pct) : Math.round(pct);
+    // safety and welcome are visually inverted (their "good" end sits on the teal left),
+    // so the stored value is the mirror of the handle's pixel position; crowd is direct.
+    pendingRating[key] = (key === 'welcome' || key === 'safety') ? Math.round(100 - pct) : Math.round(pct);
   }
 
   track.addEventListener('pointerdown', e => { dragging = true; setFromClientX(e.clientX); track.setPointerCapture(e.pointerId); });
