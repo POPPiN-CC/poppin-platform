@@ -583,7 +583,6 @@ function requestLocation() {
 window.enterApp = function () {
   document.getElementById('onboarding').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
-  localStorage.setItem('poppin_onboarded', '1');
   renderFilterChips();
   applySheetSnap('half', false);
   initMap();
@@ -593,10 +592,6 @@ window.enterApp = function () {
   // pins should pulse — otherwise pulsing would only appear after some later reload.
   loadMeetups().then(() => loadList(''));
 };
-
-if (localStorage.getItem('poppin_onboarded')) {
-  window.enterApp();
-}
 
 window.toggleSearch = function () {
   const bar = document.getElementById('searchbar');
