@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>POPPiN — 3D space (Queensboro View)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Grandstander:wght@600;700;800&family=Varela+Round&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Grandstander:wght@600;700;800&family=Varela+Round&family=Reenie+Beanie&display=swap" rel="stylesheet">
 <style>
   :root{
     --green:#1FBF6B; --green-tint:#EAF9F0;
@@ -23,7 +23,14 @@
     background:var(--bg);box-shadow:0 0 40px rgba(0,0,0,0.1)}
   #app canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
-  #banner{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;z-index:10;
+  /* Banner's height varies with its state text (short vs. a full sentence), so the back
+     button sits below it via normal flex flow rather than a fixed pixel offset — a hardcoded
+     offset would either overlap long banner text or leave a gap under short text. */
+  #top-overlay{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;
+    z-index:10;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+  #back-btn{width:28px;height:28px;border-radius:50%;background:#fff;border:none;font-size:13px;
+    cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.25);flex-shrink:0}
+  #banner{width:100%;box-sizing:border-box;
     background:rgba(255,255,255,0.92);border:1px solid var(--line);border-radius:10px;
     padding:12px 16px;font-size:13px;line-height:1.5;box-shadow:0 2px 10px rgba(0,0,0,0.06)}
   #banner b{color:var(--green)}
@@ -38,9 +45,6 @@
   #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:var(--bg);z-index:30;font-size:14px;color:var(--muted);text-align:center;padding:0 24px}
 
-  #dev-status{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;z-index:10;
-    background:rgba(255,255,255,0.9);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
-    font-size:11px;font-family:Consolas,monospace;color:var(--muted);max-width:60%}
 
   #manual-entry{position:absolute;bottom:calc(56px + env(safe-area-inset-bottom));right:12px;z-index:15;
     background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13px;
@@ -97,12 +101,13 @@
 
 <div id="loading">Loading Queensboro View scan…</div>
 
-<div id="banner">
-  <span class="state-tag" id="state-tag">checking</span>
-  <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Queensboro View POPS…</span>
+<div id="top-overlay">
+  <div id="banner">
+    <span class="state-tag" id="state-tag">checking</span>
+    <span id="banner-text"><b>POPPiN 3D space.</b> Asking your browser for your location to see whether you're inside the Queensboro View POPS…</span>
+  </div>
+  <button id="back-btn" onclick="window.goBackToApp()" aria-label="Back">&#8592;</button>
 </div>
-
-<div id="dev-status">state: waiting</div>
 
 <div id="pin-info"></div>
 
@@ -176,10 +181,17 @@ const SCANS = {
   'squirrel-grove': { id: 'squirrel_grove', name: 'Squirrel Grove', glb: '../Assets/Scans/Squirrel_Grove/Squirrel_Grove.glb', geojson: '../Assets/GIS/Squirrel_Grove.geojson' }
 };
 const DEFAULT_SCAN_SLUG = 'queensboro-view';
-const requestedSlug = (new URLSearchParams(window.location.search).get('scan') || '').toLowerCase().replace(/_/g, '-');
+const urlParams = new URLSearchParams(window.location.search);
+const requestedSlug = (urlParams.get('scan') || '').toLowerCase().replace(/_/g, '-');
 const SCAN = SCANS[requestedSlug] || SCANS[DEFAULT_SCAN_SLUG];
 const SCAN_ID = SCAN.id;
 const PINS_KEY = 'poppin_3d_pins_' + SCAN.id;
+// Set by the main app's window.lookInside() (same-tab navigation, not a new tab) so the back
+// button below can return to that exact profile instead of just the map/list.
+const RETURN_POPS_ID = urlParams.get('pops');
+window.goBackToApp = function () {
+  window.location.href = RETURN_POPS_ID ? '../index.html?openProfile=' + RETURN_POPS_ID : '../index.html';
+};
 
 // The static HTML defaults to Queensboro View's copy for the no-JS/pre-paint moment;
 // sync it to the actual selected scan immediately, since nothing else ever writes
@@ -216,13 +228,14 @@ appEl.appendChild(renderer.domElement);
 
 // Polycam's own viewer lights scans much brighter than three.js's defaults do — no shadow
 // maps are enabled anywhere in this scene, so extra lights here cost basically nothing
-// (a few more uniforms per pixel, no extra draw calls or shadow passes).
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.6));
-const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
+// (a few more uniforms per pixel, no extra draw calls or shadow passes). Intensities bumped
+// ~35-40% across the board (keeping the same key:fill ratio) for an overall brighter scan.
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 2.2));
+const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
 dirLight.position.set(5, 10, 5);
 scene.add(dirLight);
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.9);
+const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
 fillLight.position.set(-5, 4, -5);
 scene.add(fillLight);
 
@@ -239,11 +252,16 @@ function frameCameraToSize(size) {
   const fitOffset = 1.3;
   const fitHeightDistance = maxSize / (2 * Math.tan((Math.PI * camera.fov) / 360));
   const fitWidthDistance = fitHeightDistance / camera.aspect;
-  const distance = fitOffset * Math.max(fitHeightDistance, fitWidthDistance);
+  const fitDistance = fitOffset * Math.max(fitHeightDistance, fitWidthDistance);
+  // Default view starts zoomed in rather than showing the entire model at once — 50% of the
+  // full-fit distance roughly doubles the model's apparent size on entry. OrbitControls still
+  // lets the user scroll/pinch back out to the full model (or further) from here; far stays
+  // based on the full-fit distance, not the zoomed-in one, so zooming back out never clips.
+  const distance = fitDistance * 0.5;
   const direction = new THREE.Vector3(1, 0.75, 1).normalize();
   camera.position.copy(direction.multiplyScalar(distance));
   camera.near = Math.max(distance / 100, 0.01);
-  camera.far = distance * 100;
+  camera.far = fitDistance * 100;
   camera.updateProjectionMatrix();
   controls.target.set(0, 0, 0);
   controls.update();
@@ -278,11 +296,117 @@ loader.load(SCAN.glb, (gltf) => {
   console.error(error);
 });
 
-function makeNoteMarker() {
-  return new THREE.Mesh(
-    new THREE.SphereGeometry(0.03, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0x1FBF6B }) // App Green, not coral — matches the brand system
-  );
+// Notes render as an always-visible sticky-note billboard (yellow paper, handwritten script
+// font, a slight stuck-on-by-hand rotation, light wrinkle shading) rather than a plain dot —
+// same "always-visible, not tap-to-reveal" treatment photos/videos/emoji already get.
+const STICKY_NOTE_COLOR = '#FCE788';
+const STICKY_NOTE_INK = '#4A3F1F';
+const STICKY_FONT_FAMILY = "'Reenie Beanie', cursive";
+// Loaded once at module scope so the very first note doesn't flash a fallback font while the
+// webfont is still downloading — every addNoteBillboard call awaits the same cached promise.
+const stickyFontReady = document.fonts.load('bold 68px ' + STICKY_FONT_FAMILY).catch(() => {});
+
+// Small deterministic hash so a given note's rotation/wrinkle pattern stays stable across
+// reloads instead of jittering every time the scan loads (same seeded-not-random spirit as
+// the rest of this project's generated content).
+function hashSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+// Seeded PRNG (same input -> same wrinkle pattern every reload) so a note doesn't visually
+// change shape each time the scan loads.
+function mulberry32(seed) {
+  let a = seed;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function wrapText(ctx, text, cx, cy, maxWidth, lineHeight) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  words.forEach(word => {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineHeight));
+}
+
+async function addNoteBillboard(pin) {
+  await stickyFontReady;
+  const seed = hashSeed(pin.id || pin.text || String(pin.x + pin.y + pin.z));
+  const rotationDeg = (seed % 9) - 4; // small "stuck on by hand" tilt, -4..+4 degrees
+
+  const S = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d');
+
+  ctx.save();
+  ctx.translate(S / 2, S / 2);
+  ctx.rotate((rotationDeg * Math.PI) / 180);
+  ctx.translate(-S / 2, -S / 2);
+
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = S * 0.05;
+  ctx.shadowOffsetY = S * 0.02;
+  ctx.fillStyle = STICKY_NOTE_COLOR;
+  ctx.fillRect(S * 0.04, S * 0.04, S * 0.92, S * 0.92);
+  ctx.shadowColor = 'transparent';
+
+  // Light wrinkles: a few soft diagonal bands, alternating a touch lighter/darker than the
+  // base paper color, low-opacity so they read as creases rather than stripes.
+  const wrinkleRng = mulberry32(seed);
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.05)';
+    ctx.lineWidth = S * (0.02 + wrinkleRng() * 0.02);
+    ctx.beginPath();
+    const x1 = S * (0.1 + wrinkleRng() * 0.3);
+    ctx.moveTo(x1, S * 0.95);
+    ctx.lineTo(x1 + S * (0.25 + wrinkleRng() * 0.35), S * 0.05);
+    ctx.stroke();
+  }
+
+  // Soft inner shadow along the edges for a slightly lifted-paper feel.
+  const edge = ctx.createLinearGradient(0, 0, 0, S);
+  edge.addColorStop(0, 'rgba(0,0,0,0.10)');
+  edge.addColorStop(0.12, 'rgba(0,0,0,0)');
+  edge.addColorStop(0.88, 'rgba(0,0,0,0)');
+  edge.addColorStop(1, 'rgba(0,0,0,0.12)');
+  ctx.fillStyle = edge;
+  ctx.fillRect(S * 0.04, S * 0.04, S * 0.92, S * 0.92);
+
+  ctx.fillStyle = STICKY_NOTE_INK;
+  ctx.font = 'bold 68px ' + STICKY_FONT_FAMILY;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  wrapText(ctx, pin.text || '', S / 2, S / 2, S * 0.72, 72);
+
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+  sprite.position.set(pin.x, pin.y, pin.z);
+  sprite.userData.pin = pin;
+  const h = MEDIA_BILLBOARD_HEIGHT;
+  sprite.scale.set(h, h, 1);
+  scene.add(sprite);
+  pinMarkers.push(sprite);
 }
 
 function makeEmojiMarker(emoji) {
@@ -296,7 +420,7 @@ function makeEmojiMarker(emoji) {
   ctx.fillText(emoji, 64, 72);
   const texture = new THREE.CanvasTexture(canvas);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
-  sprite.scale.set(0.15, 0.15, 0.15);
+  sprite.scale.set(0.45, 0.45, 0.45); // 3x the original 0.15 — icons should read clearly at a glance
   return sprite;
 }
 
@@ -332,15 +456,31 @@ function compressImageFile(file, maxDim = 1600, quality = 0.8) {
 // Sprites billboard (face the camera) automatically in three.js — no per-frame look-at code needed.
 // depthTest is off here, same as the note/emoji markers above, so these always render on top
 // rather than being occluded by the scan mesh (an existing tradeoff, not a new one).
-// Frame color is App Green, not white — the scene background is white now, so a white
-// frame would be invisible against it.
+// Frame is white per the brand system. Since the scene background is also white, a flat white
+// fill would vanish into it at the border — a soft drop shadow (baked into the canvas texture,
+// same technique as the border itself) is what keeps the frame actually reading as a frame.
 
-const MEDIA_BILLBOARD_HEIGHT = 0.25;
+const MEDIA_BILLBOARD_HEIGHT = 0.75; // 3x the original 0.25
 const MEDIA_FRAME_MARGIN = 1.08;
-const MEDIA_FRAME_COLOR = '#1FBF6B';
+const MEDIA_FRAME_COLOR = '#FFFFFF';
+const MEDIA_FRAME_SHADOW = 'rgba(0,0,0,0.28)';
 
+// Used by the video frame (a plain rect, no content baked in yet — the video texture layers on
+// top separately). Photos bake their own border straight into the photo's canvas instead (below).
 function addMediaFrame(pin) {
-  const frame = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x1FBF6B, depthTest: false }));
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const pad = size * 0.06;
+  ctx.shadowColor = MEDIA_FRAME_SHADOW;
+  ctx.shadowBlur = size * 0.05;
+  ctx.shadowOffsetY = size * 0.02;
+  ctx.fillStyle = MEDIA_FRAME_COLOR;
+  ctx.fillRect(pad, pad, size - pad * 2, size - pad * 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  const frame = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
   frame.renderOrder = 0;
   frame.position.set(pin.x, pin.y, pin.z);
   frame.scale.set(MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, MEDIA_BILLBOARD_HEIGHT * MEDIA_FRAME_MARGIN, 1);
@@ -369,8 +509,12 @@ function addPhotoBillboard(pin) {
     canvas.width = img.width + border * 2;
     canvas.height = img.height + border * 2;
     const ctx = canvas.getContext('2d');
+    ctx.shadowColor = MEDIA_FRAME_SHADOW;
+    ctx.shadowBlur = border * 1.4;
+    ctx.shadowOffsetY = border * 0.5;
     ctx.fillStyle = MEDIA_FRAME_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.shadowColor = 'transparent'; // don't let the frame's shadow bleed onto the photo itself
     ctx.drawImage(img, border, border);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -417,11 +561,15 @@ function addVideoBillboard(pin) {
 function addPinToScene(pin) {
   if (pin.type === 'photo' && pin.storagePath && supabaseClient) { addPhotoBillboard(pin); return; }
   if (pin.type === 'video' && pin.storagePath && supabaseClient) { addVideoBillboard(pin); return; }
-  const marker = pin.type === 'emoji' ? makeEmojiMarker(pin.text) : makeNoteMarker();
-  marker.position.set(pin.x, pin.y, pin.z);
-  marker.userData.pin = pin;
-  scene.add(marker);
-  pinMarkers.push(marker);
+  if (pin.type === 'emoji') {
+    const marker = makeEmojiMarker(pin.text);
+    marker.position.set(pin.x, pin.y, pin.z);
+    marker.userData.pin = pin;
+    scene.add(marker);
+    pinMarkers.push(marker);
+    return;
+  }
+  addNoteBillboard(pin); // also the fallback for any unexpected/legacy type, same as before
 }
 
 async function loadStoredPins() {
@@ -786,7 +934,6 @@ document.getElementById('pin-save').addEventListener('click', async () => {
 
 const bannerText = document.getElementById('banner-text');
 const stateTag = document.getElementById('state-tag');
-const devStatus = document.getElementById('dev-status');
 
 let popsPolygon = null;
 let currentState = 'waiting';
@@ -806,10 +953,6 @@ function applyState(state, meta) {
   appEl.className = 'state-' + effective;
   stateTag.textContent = effective;
   bannerText.innerHTML = STATE_COPY[effective] || '';
-  devStatus.textContent = 'state: ' + effective +
-    (meta && meta.latitude !== undefined ? '  ·  lat ' + meta.latitude.toFixed(5) + ', lng ' + meta.longitude.toFixed(5) : '') +
-    (meta && meta.accuracy !== undefined ? '  ·  ±' + Math.round(meta.accuracy) + 'm' : '') +
-    (manualOverrideState ? '  ·  manual override active' : '');
 }
 
 function decideState(lat, lng) {

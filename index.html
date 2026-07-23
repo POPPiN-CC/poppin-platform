@@ -619,7 +619,10 @@ window.enterApp = function () {
   // Ask for location FIRST, before any DOM/map work, while the tap gesture is freshest.
   // iOS Safari ties getCurrentPosition() to a live user gesture and is stricter than
   // Chromium — heavy synchronous work (initMap etc.) before the call can consume the
-  // gesture, so the permission prompt silently never appears.
+  // gesture, so the permission prompt silently never appears. (On the ?openProfile deep-link
+  // path below, there's no fresh gesture to tie to — but that's fine: this only matters for
+  // the very first-ever prompt, and by the time someone reaches Look Inside and comes back,
+  // permission has already been granted or denied once through the real "Let's go" tap.)
   requestLocation();
   document.getElementById('onboarding').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
@@ -628,8 +631,10 @@ window.enterApp = function () {
   initMap();
   renderUserLocationMarker();
   // Load active meetups first so the initial marker render already knows which POPS
-  // pins should pulse — otherwise pulsing would only appear after some later reload.
-  loadMeetups().then(() => loadList(''));
+  // pins should pulse — otherwise pulsing would only appear after some later reload. Returned
+  // so the ?openProfile deep-link (at the very end of this module) can chain onto it —
+  // allPops must be loaded before openProfile runs.
+  return loadMeetups().then(() => loadList(''));
 };
 
 window.toggleSearch = function () {
@@ -1078,7 +1083,17 @@ let selectedActivityCategory = null;
 const LIVE_ACTIVITY_RADIUS_METERS = 30;
 
 window.openProfile = async function (id) {
-  const p = allPops.find(x => x.id === id);
+  let p = allPops.find(x => x.id === id);
+  // Self-sufficient rather than assuming allPops is already populated — covers the
+  // ?openProfile= deep link from 3d-space's back button, which can in principle race ahead of
+  // loadList()'s own fetch, plus any other future caller that hasn't loaded the list first.
+  if (!p && supabase) {
+    const { data, error } = await supabase.from('pops').select('*').eq('id', id).maybeSingle();
+    if (error) console.error('openProfile: could not fetch pops', id, error);
+    p = data || null;
+    if (p) allPops.push(p);
+  }
+  if (!p) { console.error('openProfile: no such POPS', id); return; }
   currentPops = p;
   const avg = await getAverages(p.id);
   pendingRating = { safety: avg.safety, crowd: avg.crowd, welcome: avg.welcome };
@@ -1345,7 +1360,10 @@ window.uploadMedia = async function (inputEl, type) {
 window.lookInside = function () {
   if (!currentPops) return;
   if (currentPops.scan_slug) {
-    window.open('3d-space/?scan=' + currentPops.scan_slug, '_blank');
+    // Same-tab navigation, not a new tab — 3d-space/index.html reads the `pops` param to
+    // build its own back button, which returns here via ?openProfile=<id> (see the deep-link
+    // handling below enterApp).
+    window.location.href = '3d-space/?scan=' + currentPops.scan_slug + '&pops=' + currentPops.id;
   } else {
     alert('3D space coming soon for ' + currentPops.name + '!');
   }
@@ -1372,7 +1390,39 @@ window.startLiveActivity = function () {
 window.backToList = function () {
   document.getElementById('profileView').style.display = 'none';
   document.getElementById('listView').style.display = 'block';
+  // On the ?openProfile deep-link path, the map + bottom sheet were initialized while
+  // #listView was display:none (a zero-size container), so Leaflet cached 0x0 dimensions and
+  // the sheet snapped against zero height. Now that the container is actually visible,
+  // re-measure both (same pattern the window 'resize' handler already uses) and re-thin the
+  // markers, which were thinned against degenerate map bounds. All harmless no-ops in the
+  // normal pin-tap flow, where the map was already sized correctly.
+  if (leafletMap) {
+    leafletMap.invalidateSize();
+    renderMapMarkers(thinMarkersForView(lastMapList), lastActivityTagsByPops, lastRecentlyActiveSet);
+  }
+  applySheetSnap(currentSheetSnap, false);
+  // Drop the ?openProfile= param so the URL matches the map view — otherwise a reload here
+  // would bounce straight back into that profile.
+  if (location.search) history.replaceState(null, '', location.pathname + location.hash);
 };
+
+// Returning from 3d-space/'s back button (its goBackToApp navigates the same tab, not a new
+// one) lands here with ?openProfile=<pops id> — skip onboarding and go straight back to that
+// profile. This MUST run at the very end of the module: enterApp() synchronously calls
+// loadMeetups()/loadList(), whose bodies touch module-level `let` state (activeMeetupsByPops,
+// lastMapList, markerById, …) declared further down. Invoking enterApp() mid-module — where
+// this block used to live — hit those bindings in their temporal dead zone, the async chain
+// rejected, openProfile never ran, and the page went blank. Down here every declaration is
+// initialized, exactly as it is when the "Let's go" button calls enterApp().
+const deepLinkPopsId = new URLSearchParams(window.location.search).get('openProfile');
+if (deepLinkPopsId) {
+  // #listView has no default display:none, so hide it now to avoid a flash of the map/cards
+  // before openProfile takes over.
+  document.getElementById('listView').style.display = 'none';
+  window.enterApp()
+    .then(() => window.openProfile(deepLinkPopsId))
+    .catch(err => console.error('Deep-link openProfile failed:', err));
+}
 </script>
 </body>
 </html>
