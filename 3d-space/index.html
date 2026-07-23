@@ -94,6 +94,20 @@
     background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:13px;
     max-width:85%;text-align:center;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.1);
     font-family:var(--font-body);color:var(--ink)}
+
+  /* Tap-to-fullscreen overlay for photo/video pins, above everything except the loading
+     screen (nothing else is meant to be reachable mid-load anyway). */
+  #lightbox{position:absolute;inset:0;z-index:35;background:rgba(0,0,0,0.85);
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+  #lightbox.hidden{display:none}
+  #lightbox-content{max-width:92%;max-height:78%;display:flex}
+  #lightbox-content img,#lightbox-content video{max-width:100%;max-height:100%;border-radius:12px;
+    display:block;box-shadow:0 8px 30px rgba(0,0,0,0.4)}
+  #lightbox-caption{color:#fff;font-family:var(--font-body);font-size:13px;text-align:center;
+    max-width:85%;margin:0}
+  #lightbox-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;z-index:36;
+    width:36px;height:36px;border-radius:50%;background:#fff;border:none;font-size:18px;
+    line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
 </style>
 </head>
 <body>
@@ -110,6 +124,11 @@
 </div>
 
 <div id="pin-info"></div>
+
+<div id="lightbox" class="hidden">
+  <button id="lightbox-close" aria-label="Close">&times;</button>
+  <div id="lightbox-content"></div>
+</div>
 
 <button id="manual-toggle">🛠 Manual location</button>
 <div id="manual-entry" class="hidden">
@@ -424,6 +443,22 @@ function makeEmojiMarker(emoji) {
   return sprite;
 }
 
+// iPhone camera captures default to HEIC, which no browser can decode via <img>/canvas — the
+// exact mechanism compressImageFile (and the eventual scene billboard's own <img>) both rely
+// on. Left alone, a HEIC capture uploads "successfully" (Supabase Storage doesn't care about
+// bytes) but the pin never displays anywhere, silently. Convert to a normal JPEG first, only
+// when actually needed — loaded on demand from a CDN, same pattern as the main app's Supabase
+// import, so pages that never touch a HEIC file never pay for the library at all.
+function looksHeic(file) {
+  return /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || '');
+}
+async function toWebSafeImage(file) {
+  if (!looksHeic(file)) return file;
+  const heic2any = (await import('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/+esm')).default;
+  const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  return Array.isArray(converted) ? converted[0] : converted;
+}
+
 // Resize + re-encode a photo client-side before upload — a full-res phone photo (3-4MB)
 // typically comes down to a few hundred KB, which matters a lot against the free-tier
 // 1GB storage cap and 5GB/month egress (egress is spent every time a photo is viewed, not just uploaded).
@@ -621,12 +656,42 @@ function canContribute() {
   return currentState === 'inside';
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+const lightboxEl = document.getElementById('lightbox');
+const lightboxContentEl = document.getElementById('lightbox-content');
+function closeLightbox() {
+  lightboxEl.classList.add('hidden');
+  lightboxContentEl.innerHTML = ''; // clears it out so a playing video actually stops
+}
+function openLightbox(pin) {
+  if (!supabaseClient || !pin.storagePath) return;
+  const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
+  const media = pin.type === 'video'
+    ? '<video src="' + data.publicUrl + '" controls autoplay playsinline loop></video>'
+    : '<img src="' + data.publicUrl + '" alt="">';
+  const caption = pin.text ? '<p id="lightbox-caption">' + escapeHtml(pin.text) + '</p>' : '';
+  lightboxContentEl.innerHTML = media + caption;
+  lightboxEl.classList.remove('hidden');
+}
+document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+lightboxEl.addEventListener('click', (e) => { if (e.target === lightboxEl) closeLightbox(); });
+
+// Photo/video pins open the fullscreen lightbox instead of the small text toast — tapping a
+// tiny 3D billboard is how you'd actually want to see the real thing, not just a caption.
 function showPinInfo(marker) {
   const pin = marker.userData.pin;
+  if (pin.type === 'photo' || pin.type === 'video') {
+    openLightbox(pin);
+    return;
+  }
   const when = new Date(pin.createdAt).toLocaleString();
-  const prefix = pin.type === 'emoji' ? pin.text + ' ' : pin.type === 'photo' ? '📷 ' : pin.type === 'video' ? '🎥 ' : '📝 ';
-  const fallback = pin.type === 'photo' ? '(photo)' : pin.type === 'video' ? '(video)' : '';
-  pinInfoEl.textContent = prefix + (pin.text || fallback) + '  ·  ' + when;
+  const prefix = pin.type === 'emoji' ? pin.text + ' ' : '📝 ';
+  pinInfoEl.textContent = prefix + (pin.text || '') + '  ·  ' + when;
   pinInfoEl.style.display = 'block';
   clearTimeout(showPinInfo._t);
   showPinInfo._t = setTimeout(() => { pinInfoEl.style.display = 'none'; }, 4000);
@@ -736,7 +801,24 @@ let videoStream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedBlob = null;
+let recordedMimeType = null; // carries the format startRecording actually picked to the upload step
 let recordCountdown = null;
+
+// iOS Safari has never shipped VP8/WebM support, for either recording or playback — a
+// well-documented WebKit gap, not a bug on our end. The old code only ever tried webm
+// variants, so on iPhone it silently ended up recording (or trying to record) a container
+// the device can't play back at all: the pin gets created and the white frame sprite shows
+// (addMediaFrame runs unconditionally), but the actual video content sprite never appears,
+// since it's only added once the <video> element's loadedmetadata fires — which never happens
+// for an undecodable file. video/mp4 is what iOS's MediaRecorder actually supports.
+// Webm stays first since desktop Chrome/Firefox support it more reliably than mp4 recording.
+const VIDEO_MIME_CANDIDATES = [
+  'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm',
+  'video/mp4;codecs=avc1', 'video/mp4'
+];
+function pickVideoMimeType() {
+  return VIDEO_MIME_CANDIDATES.find(t => MediaRecorder.isTypeSupported(t)) || null;
+}
 
 function stopCameraStream() {
   clearInterval(recordCountdown);
@@ -770,8 +852,19 @@ function startRecording() {
   if (!videoStream) return;
   recordedChunks = [];
   recordedBlob = null;
-  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
-  mediaRecorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: 400000 });
+  const mimeType = pickVideoMimeType();
+  if (!mimeType) {
+    videoStatus.textContent = "Video recording isn't supported on this browser.";
+    return;
+  }
+  try {
+    mediaRecorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: 400000 });
+  } catch (err) {
+    console.error('MediaRecorder failed to start', err);
+    videoStatus.textContent = 'Could not start recording on this device.';
+    return;
+  }
+  recordedMimeType = mimeType;
   mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     recordedBlob = new Blob(recordedChunks, { type: mimeType });
@@ -874,8 +967,12 @@ document.getElementById('pin-save').addEventListener('click', async () => {
   if (selectedType === 'video') {
     stopCameraStream();
     if (!recordedBlob || !supabaseClient) { pinModal.classList.add('hidden'); return; }
-    const path = SCAN_ID + '/' + Date.now() + '_clip.webm';
-    const { error: uploadError } = await supabaseClient.storage.from('scan-media').upload(path, recordedBlob, { contentType: 'video/webm' });
+    // Use whatever format startRecording actually picked — hardcoding webm here regardless of
+    // what was really recorded (the old behavior) meant an mp4 recording would still get
+    // uploaded with a Content-Type of video/webm, which is wrong regardless of platform.
+    const ext = (recordedMimeType || '').includes('mp4') ? 'mp4' : 'webm';
+    const path = SCAN_ID + '/' + Date.now() + '_clip.' + ext;
+    const { error: uploadError } = await supabaseClient.storage.from('scan-media').upload(path, recordedBlob, { contentType: recordedMimeType || 'video/webm' });
     if (uploadError) { console.error(uploadError); pinModal.classList.add('hidden'); return; }
     const pin = {
       id: 'pin_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
@@ -891,13 +988,29 @@ document.getElementById('pin-save').addEventListener('click', async () => {
 
   if (selectedType === 'photo') {
     if (!selectedPhotoFile || !supabaseClient) { pinModal.classList.add('hidden'); return; }
-    let uploadBlob = selectedPhotoFile;
-    let ext = selectedPhotoFile.name.split('.').pop() || 'jpg';
+    let sourceFile = selectedPhotoFile;
     try {
-      uploadBlob = await compressImageFile(selectedPhotoFile);
+      sourceFile = await toWebSafeImage(selectedPhotoFile);
+    } catch (err) {
+      console.error('HEIC conversion failed', err);
+      alert('Could not process that photo (unsupported format). Try a different one.');
+      pinModal.classList.add('hidden');
+      return;
+    }
+    let uploadBlob = sourceFile;
+    // sourceFile keeps its original name/extension when toWebSafeImage was a no-op; a HEIC
+    // conversion returns a plain Blob (no .name), and we know that one's a JPEG.
+    let ext = sourceFile === selectedPhotoFile ? (selectedPhotoFile.name.split('.').pop() || 'jpg') : 'jpg';
+    try {
+      uploadBlob = await compressImageFile(sourceFile);
       ext = 'webp';
     } catch (err) {
-      console.warn('Photo compression failed, uploading original file instead', err);
+      // Uploading the uncompressed original here (the old behavior) would silently upload a
+      // file that will never display anywhere, with zero indication why — fail loudly instead.
+      console.error('Photo processing failed', err);
+      alert('Could not process that photo. Try a different one.');
+      pinModal.classList.add('hidden');
+      return;
     }
     const path = SCAN_ID + '/' + Date.now() + '_photo.' + ext;
     const { error: uploadError } = await supabaseClient.storage.from('scan-media')
