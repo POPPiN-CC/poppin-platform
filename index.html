@@ -1442,6 +1442,15 @@ window.showProfileTab = function (tab) {
   document.getElementById('tabSpace').style.display = tab === 'space' ? 'block' : 'none';
   document.getElementById('tabBtnHappening').classList.toggle('on', tab === 'happening');
   document.getElementById('tabBtnSpace').classList.toggle('on', tab === 'space');
+  // renderSpaceTab builds the food minimap right after openProfile, while #tabSpace is still
+  // display:none (What's Happening is the default tab) — Leaflet measured a 0x0 container at
+  // that point, so both its size AND the fitBounds() framing computed from it are wrong, and
+  // neither self-corrects once the tab actually becomes visible. invalidateSize() alone only
+  // fixes the first part; re-running fitBounds() against the now-real size fixes the framing.
+  if (tab === 'space' && foodMinimap) {
+    foodMinimap.invalidateSize();
+    if (foodMinimapBounds) foodMinimap.fitBounds(foodMinimapBounds, { padding: [24, 24] });
+  }
 };
 
 window.submitVibeRating = async function () {
@@ -1462,12 +1471,90 @@ window.submitVibeRating = async function () {
 
 // ---------------- Tab 2: The Space ----------------
 
+// "Food Near Here" — pilots only (the 389 CSV spaces have no equivalent curated data, and
+// this is deliberately a static-asset feature, not a new table/column: a hand-curated GeoJSON
+// of real food spots near the Roosevelt Island/Cornell Tech pilots, fetched once and cached,
+// same "no major data structure changes" spirit as everything else this pass).
+let foodNearPilotsCache = null;
+async function getFoodNearPilots() {
+  if (foodNearPilotsCache) return foodNearPilotsCache;
+  try {
+    const res = await fetch('Assets/GIS/roosevelt_island_food_near_cornell_tech.geojson');
+    const geojson = await res.json();
+    foodNearPilotsCache = geojson.features || [];
+  } catch (err) {
+    console.error('Could not load nearby food data', err);
+    foodNearPilotsCache = [];
+  }
+  return foodNearPilotsCache;
+}
+
+const FOOD_TYPE_ICON = [
+  { match: ['bakery'], icon: '🥐' },
+  { match: ['cafe'], icon: '☕' },
+  { match: ['bar'], icon: '🍸' },
+  { match: ['fast food'], icon: '🍔' },
+  { match: ['restaurant'], icon: '🍽️' }
+];
+function foodIconFor(type) {
+  const lower = (type || '').toLowerCase();
+  const found = FOOD_TYPE_ICON.find(f => f.match.some(k => lower.includes(k)));
+  return found ? found.icon : '📍';
+}
+
+// Small, deliberately non-interactive reference map, not a second navigable map — dragging/
+// zoom are all off so it doesn't fight the profile page's own scroll on mobile (a draggable
+// embedded map trapping touch-scroll is a common, annoying pattern). Markers still open a
+// popup on tap, which is the map's actual payoff.
+let foodMinimap = null;
+let foodMinimapBounds = null; // re-applied by showProfileTab once the tab (and container) is actually visible
+async function renderFoodMinimap(p) {
+  const container = document.getElementById('foodMinimap');
+  if (!container) return;
+  const features = await getFoodNearPilots();
+  foodMinimap = L.map('foodMinimap', {
+    zoomControl: false, dragging: false, scrollWheelZoom: false,
+    doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false
+  });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19, subdomains: 'abcd'
+  }).addTo(foodMinimap);
+
+  const hereIcon = L.divIcon({
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:#1FBF6B;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>',
+    className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+  });
+  const bounds = [[p.lat, p.lng]];
+  L.marker([p.lat, p.lng], { icon: hereIcon }).addTo(foodMinimap).bindPopup(p.name + ' (you are here)');
+
+  features.forEach(f => {
+    const [lng, lat] = f.geometry.coordinates;
+    bounds.push([lat, lng]);
+    const icon = L.divIcon({
+      html: '<div style="font-size:16px;line-height:1">' + foodIconFor(f.properties.type) + '</div>',
+      className: '', iconSize: [22, 22], iconAnchor: [11, 11]
+    });
+    L.marker([lat, lng], { icon }).addTo(foodMinimap)
+      .bindPopup('<b>' + escapeHtml(f.properties.name) + '</b><br>' + escapeHtml(f.properties.address || ''));
+  });
+
+  foodMinimapBounds = bounds;
+  foodMinimap.fitBounds(bounds, { padding: [24, 24] });
+}
+
 function renderSpaceTab(p) {
+  // Leaflet doesn't clean itself up when its container is torn down — el.innerHTML below
+  // destroys #foodMinimap's DOM node on every call, so any previous map instance (from a
+  // prior pilot profile in this same session) needs to be explicitly disposed here first,
+  // regardless of whether the space being rendered now is a pilot.
+  if (foodMinimap) { foodMinimap.remove(); foodMinimap = null; }
+
   const el = document.getElementById('tabSpace');
   const amenityWords = [...new Set(
     [].concat(p.amenities || [], p.amenities_required || [], p.permitted_amenities || [])
       .filter(a => a && String(a).toLowerCase() !== 'none' && !String(a).toLowerCase().includes('other'))
   )];
+  const isPilot = !!p.scan_slug; // only the 3 real, hand-scanned pilots have this set
   el.innerHTML =
     '<p class="block-label" style="margin-top:8px">Address</p>' +
     '<p class="space-detail">' + (p.building_address || 'Not listed') + '</p>' +
@@ -1482,6 +1569,10 @@ function renderSpaceTab(p) {
           }).join('')
         : '<span class="amenity-pill" style="color:#B0AEA6">None listed</span>') +
     '</div>' +
+    (isPilot
+      ? '<p class="block-label">Food Near Here</p>' +
+        '<div id="foodMinimap" style="height:180px;border-radius:14px;overflow:hidden;margin-bottom:16px"></div>'
+      : '') +
     '<p class="block-label">Share your spot</p>' +
     '<div id="mediaGallery" class="media-gallery"></div>' +
     '<div style="display:flex;gap:10px;margin-bottom:16px">' +
@@ -1489,6 +1580,7 @@ function renderSpaceTab(p) {
       '<label class="uploadbtn">Add a recording<input type="file" accept="audio/*" onchange="window.uploadMedia(this,\'recording\')"/></label>' +
     '</div>';
   renderMediaGallery();
+  if (isPilot) renderFoodMinimap(p);
 }
 
 function renderMediaGallery() {
