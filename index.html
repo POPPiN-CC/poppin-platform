@@ -20,6 +20,10 @@
   .istem{display:inline-block;position:relative;background:var(--ink);border-radius:3px}
   @keyframes dotBounce{0%,100%{transform:translateX(-50%) rotate(-45deg) translateY(0) scale(1)}50%{transform:translateX(-50%) rotate(-45deg) translateY(-7px) scale(1.05,0.92)}}
   .pindot{position:absolute;left:50%;border-radius:50% 50% 50% 0;background:var(--green);animation:dotBounce 1.1s ease-in-out infinite}
+  /* Welcome-screen-only variant: a full illustrated asset instead of the flat CSS teardrop,
+     so no rotate(-45deg) (that was only there to orient the CSS shape) — just a vertical bounce. */
+  @keyframes heroDotBounce{0%,100%{transform:translateX(-50%) translateY(0) scale(1)}50%{transform:translateX(-50%) translateY(-7px) scale(1.05,0.92)}}
+  .pindot-hero{position:absolute;left:50%;animation:heroDotBounce 1.1s ease-in-out infinite}
   @keyframes fadeUp{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
   #onboarding{position:relative;background:var(--bg);height:100%;display:flex;flex-direction:column;overflow-y:auto}
   #onboarding .content{position:relative;flex:1;display:flex;flex-direction:column;padding:50px 28px 28px;text-align:center;animation:fadeUp 0.5s ease-out both}
@@ -41,6 +45,7 @@
   .header{padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
   .searchicon{border:2px solid var(--green);border-radius:8px;background:none;font-size:16px;cursor:pointer;width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
   .searchicon.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .searchicon img{width:18px;height:18px;object-fit:contain}
   .searchbar{margin:0 16px 12px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   .searchbar input{border:none;background:transparent;font-size:14px;flex:1;outline:none;font-family:var(--font-body)}
 
@@ -91,6 +96,16 @@
   .bar{height:7px;border-radius:4px;background:#EDECE7;position:relative;overflow:hidden}
   .bar span{position:absolute;left:0;top:0;bottom:0;border-radius:4px;transition:width .4s ease}
   .btn-space{width:100%;color:#fff;border:none;border-radius:14px;height:50px;font-family:var(--font-display);font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px}
+  /* "Add your read of the space!" only — Submit my read keeps the plain .btn-space look.
+     60% height, not full width (centered instead), white/black idle with a visible stroke
+     (needed since a white fill would otherwise vanish against the page background) and the
+     space's own vibe color (set via a custom property, since the base class's fill is an
+     inline style otherwise) only while actively pressed. display:block + margin:auto centers
+     it despite being an auto-width button — margin's bottom value is repeated here since the
+     shorthand would otherwise reset the 14px spacing .btn-space sets below it. */
+  .btn-space-start{display:block;width:auto;height:30px;padding:0 24px;margin:0 auto 14px;
+    background:#fff;color:#1A1A1A;border:1.5px solid var(--ink)}
+  .btn-space-start:active{background:var(--vibe-color);color:#fff}
   @keyframes pinPulse{0%{transform:scale(0.6);opacity:0.55}100%{transform:scale(2.6);opacity:0}}
   .pulse-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--ring-color, #1FBF6B);animation:pinPulse 1.8s ease-out infinite}
   .you-are-here{width:16px;height:16px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,0.35),0 2px 6px rgba(0,0,0,0.3)}
@@ -98,7 +113,14 @@
   /* ---------- redesigned profile: two tabs, drag-to-rate ---------- */
   #profileView{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff}
   .ptop{position:relative;height:120px;background:#E3DDCC}
-  .picon-btn{width:28px;height:28px;border-radius:50%;background:#fff;border:none;font-size:13px;cursor:pointer}
+  .picon-btn{width:28px;height:28px;border-radius:50%;background:#fff;border:none;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .picon-btn img{width:16px;height:16px;object-fit:contain}
+  /* Look Inside / Live Activity only — icon 2.5x (16px->40px), button grown just enough to
+     contain it with breathing room. The back/save buttons stay plain .picon-btn, unaffected. */
+  .picon-btn-lg{width:48px;height:48px;box-shadow:0 2px 3px rgba(0,0,0,0.3)}
+  .picon-btn-lg img{width:40px;height:40px}
+  .picon-btn-cyan{background:#22D3EE}
+  .picon-btn-pink{background:#FF6B9D}
   .pscript-tag{font-family:var(--font-script);font-size:16px;color:#4A4436;margin:0;background:rgba(255,255,255,0.9);padding:3px 9px;border-radius:7px}
   .ptabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
   .ptab-btn{padding:5px 12px;font-family:var(--font-display);font-size:11px;font-weight:700;cursor:pointer;border:none;background:var(--panel);color:#8A8A82}
@@ -112,7 +134,7 @@
   .activity-chip{font-family:var(--font-body);font-size:12px;font-weight:600;color:#fff;
     padding:8px 12px;border-radius:12px}
   .slider-label{font-size:10px;color:#8A8A82;font-family:var(--font-body);display:flex;justify-content:space-between;margin-bottom:5px}
-  .slider-track{height:10px;border-radius:5px;position:relative;background:linear-gradient(90deg,#0EA5A0,#1FBF6B,#7FBF3F,#D9A521,#E8763D);cursor:pointer;touch-action:none}
+  .slider-track{height:10px;border-radius:5px;position:relative;background:linear-gradient(90deg,#E8763D,#D9A521,#7FBF3F,#1FBF6B,#0EA5A0);cursor:pointer;touch-action:none}
   .slider-avgdot{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;background:#fff;border:2px solid rgba(0,0,0,0.35);transform:translate(-50%,-50%);pointer-events:none}
   .slider-handle{position:absolute;top:50%;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid #1A1A1A;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,0.25);cursor:grab}
   .hint-text{font-family:var(--font-body);font-size:9.5px;color:#B0AEA6;text-align:center;margin:0 0 10px}
@@ -188,7 +210,7 @@
 
     <div class="content">
       <div class="center">
-        <span class="wordmark" style="font-size:36px;margin-bottom:6px">POPP<span class="istem" style="width:7px;height:26px;margin:0 2px"><span class="pindot" style="width:15px;height:15px;top:-18px"></span></span>N</span>
+        <span class="wordmark" style="font-size:36px;margin-bottom:6px">POPP<span class="istem" style="width:7px;height:26px;margin:0 2px"><img class="pindot-hero" src="Assets/Vectors/138418471_284552b1-14f5-411f-b8c1-38f5f1a73f7d.svg" style="width:24px;top:-30px" alt=""/></span>N</span>
         <p class="tagline-script">what's poppin in your neighborhood?</p>
         <p class="vibe-line">Find your perfect spot to read, work, hang, or just <span style="color:var(--green);font-weight:700">vibe</span>, right now.</p>
       </div>
@@ -208,9 +230,8 @@
         <div class="header">
           <span class="wordmark" style="font-size:19px"><span>POPP</span><span class="istem" style="width:4px;height:14px;margin:0 1px"><span class="pindot" style="width:9px;height:9px;top:-11px"></span></span><span>N</span></span>
           <div style="display:flex;align-items:center;gap:8px">
-            <a class="searchicon" href="3d-space/" target="_blank" rel="noopener" title="3D space prototype (dev)" style="text-decoration:none">&#127958;&#65039;</a>
-            <button class="searchicon" id="filterIcon" onclick="window.toggleFilters()" aria-label="Filter">&#127899;&#65039;</button>
-            <button class="searchicon" onclick="window.toggleSearch()" aria-label="Search">&#9906;</button>
+            <button class="searchicon" id="filterIcon" onclick="window.toggleFilters()" aria-label="Filter"><img src="Assets/Vectors/filter.png" alt=""/></button>
+            <button class="searchicon" onclick="window.toggleSearch()" aria-label="Search"><img src="Assets/Vectors/search.png" alt=""/></button>
           </div>
         </div>
         <div id="searchbar" class="searchbar" style="display:none">
@@ -783,16 +804,29 @@ window.focusPopOnMap = function (id) {
 };
 
 // Called from real data loads (loadList): stores the full matching set, thins it for
-// the current view, and — unlike the zoomend/moveend listener — re-fits the map to the
-// full set of matches (not just the thinned ones, or fitBounds would shrink every time
-// thinning ran and fight the user's own zoom/pan).
-function updateMapMarkers(fullList, activityTagsByPops, recentlyActiveSet) {
+// the current view, and repositions the map — unlike the zoomend/moveend listener, which
+// only re-thins on pan/zoom and never moves the camera itself.
+//
+// With a real search/filter/sort narrowing the results, fit to the full set of matches (not
+// just the thinned ones, or fitBounds would shrink every time thinning ran and fight the
+// user's own zoom/pan). With no search/filter active — the default browse view — center on
+// the user instead: fitting to all ~395 POPS citywide on every plain load was the actual bug
+// being fixed here, since it buries "where am I" under "here's all of NYC."
+function updateMapMarkers(fullList, activityTagsByPops, recentlyActiveSet, hasSearchOrFilters) {
   lastMapList = fullList;
   lastActivityTagsByPops = activityTagsByPops;
   lastRecentlyActiveSet = recentlyActiveSet;
   renderMapMarkers(thinMarkersForView(fullList), activityTagsByPops, recentlyActiveSet);
-  const points = fullList.filter(p => p.lat != null && p.lng != null).map(p => [p.lat, p.lng]);
-  if (points.length && leafletMap) leafletMap.fitBounds(points, { padding: [20, 20] });
+  if (!leafletMap) return;
+  if (hasSearchOrFilters) {
+    const points = fullList.filter(p => p.lat != null && p.lng != null).map(p => [p.lat, p.lng]);
+    if (points.length) leafletMap.fitBounds(points, { padding: [20, 20] });
+  } else if (currentLocation) {
+    leafletMap.setView([currentLocation.lat, currentLocation.lng], 15, { animate: false });
+  }
+  // else: no search/filter and no location yet — leave the map at initMap's fixed default
+  // view; requestLocation()'s success callback re-runs loadList once a fix comes in, which
+  // re-enters this same branch and centers on the user then.
 }
 
 async function loadList(searchText) {
@@ -842,20 +876,24 @@ async function loadList(searchText) {
     return true;
   });
 
-  // Map shows every match (thinned for on-screen density, see thinMarkersForView) —
-  // search/filters narrow the candidate set for both the map and the list together.
-  updateMapMarkers(
-    filtered.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.p, r.avg, activityTagsByPops[r.p.id])), _count: r.avg.count, _avg: r.avg })),
-    activityTagsByPops,
-    recentlyActiveSet
-  );
-
   // The list itself is capped to the 5 closest by default, so it's not just as
   // overwhelming a wall as the unthinned map would be — but that cap only applies when
   // browsing with no search/filters/sort active; a real search, filter, or sort should show
   // every match. Sort-by-popular composes with whatever other filters are active (it's just
   // an ordering, not a narrowing), so it's applied after the default-cap branch, not inside it.
+  // Computed before updateMapMarkers below too — same "are we actually narrowing results"
+  // question decides whether the map fits to the matches or centers on the user instead.
   const hasSearchOrFilters = !!search || !!activeFilters.distance || !!activeFilters.liveliness || activeFilters.activities.size > 0 || !!activeFilters.sort;
+
+  // Map shows every match (thinned for on-screen density, see thinMarkersForView) —
+  // search/filters narrow the candidate set for both the map and the list together.
+  updateMapMarkers(
+    filtered.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.p, r.avg, activityTagsByPops[r.p.id])), _count: r.avg.count, _avg: r.avg })),
+    activityTagsByPops,
+    recentlyActiveSet,
+    hasSearchOrFilters
+  );
+
   let listRows = filtered;
   if (!hasSearchOrFilters && currentLocation) {
     listRows = filtered.slice()
@@ -1128,8 +1166,8 @@ window.openProfile = async function (id) {
           '<button class="ptab-btn" id="tabBtnSpace" onclick="window.showProfileTab(\'space\')">The Space</button>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
-          '<button class="picon-btn" title="Look Inside" onclick="window.lookInside()">&#127958;&#65039;</button>' +
-          '<button class="picon-btn" title="Live Activity" onclick="window.startLiveActivity()">&#128205;</button>' +
+          '<button class="picon-btn picon-btn-lg picon-btn-cyan" title="Look Inside" onclick="window.lookInside()"><img src="Assets/Vectors/3d_bench.png" alt=""/></button>' +
+          '<button class="picon-btn picon-btn-lg picon-btn-pink" title="Live Activity" onclick="window.startLiveActivity()"><img src="Assets/Vectors/Live%20activity.png" alt=""/></button>' +
         '</div>' +
       '</div>' +
       '<div id="tabHappening"></div>' +
@@ -1158,12 +1196,12 @@ function renderHappeningTab(p, avg, color) {
       '<button class="btn-primary" style="margin-bottom:0" onclick="window.submitActivity()">Post</button>' +
     '</div>' +
 
-    sliderHTML('safety', 'Safe', 'Unsafe', avg.safety, true) +
-    sliderHTML('crowd', 'Open Seating', 'Couldn\'t Find a Spot', avg.crowd) +
-    sliderHTML('welcome', 'Welcoming', 'Unwelcome', avg.welcome, true) +
+    sliderHTML('safety', 'Unsafe', 'Safe', avg.safety) +
+    sliderHTML('crowd', 'Couldn\'t Find a Spot', 'Open Seating', avg.crowd, true) +
+    sliderHTML('welcome', 'Unwelcome', 'Welcoming', avg.welcome) +
     '<p class="hint-text">White dot = everyone\'s average</p>' +
     '<div id="ratingStartWrap">' +
-      '<button class="btn-space" style="background:' + color + '" onclick="window.startRatingSubmission()">Add your read of the space!</button>' +
+      '<button class="btn-space btn-space-start" style="--vibe-color:' + color + '" onclick="window.startRatingSubmission()">Add your read of the space!</button>' +
     '</div>' +
     '<div id="ratingSubmitForm" style="display:none">' +
       '<p class="block-label" style="margin-top:0">What would make this better?</p>' +
@@ -1248,9 +1286,10 @@ function attachSlider(key) {
     let pct = ((clientX - rect.left) / rect.width) * 100;
     pct = Math.max(0, Math.min(100, pct));
     handle.style.left = pct + '%';
-    // safety and welcome are visually inverted (their "good" end sits on the teal left),
-    // so the stored value is the mirror of the handle's pixel position; crowd is direct.
-    pendingRating[key] = (key === 'welcome' || key === 'safety') ? Math.round(100 - pct) : Math.round(pct);
+    // Teal (the "good" end) is now on the right, so crowd is the one visually inverted —
+    // its good value (low crowd, "Open Seating") sits near the teal-right end. safety/welcome
+    // are direct now: their good/high value already sits near the teal-right end on its own.
+    pendingRating[key] = key === 'crowd' ? Math.round(100 - pct) : Math.round(pct);
   }
 
   track.addEventListener('pointerdown', e => { dragging = true; setFromClientX(e.clientX); track.setPointerCapture(e.pointerId); });
