@@ -2,10 +2,11 @@
 -- and the 3 pilot GeoJSON polygons. Do not hand-edit; re-run the generator instead.
 
 -- The 3 real pilot spaces (status = active), lat/lng are their GeoJSON polygon centroids.
-insert into pops (name, description, lat, lng, amenities, best_time, hours, status) values
-  ('Queensboro View', 'A quiet overlook with sightlines to the Queensboro Bridge.', 40.756099, -73.95594116666666, ARRAY['sun','armchair','scenic']::text[], 'Early evening, as the light hits the bridge', '7am to 9:30pm daily', 'active'),
-  ('Squirrel Grove', 'A shaded grove with a long communal table.', 40.7551834, -73.95629346666666, ARRAY['shade','seating','armchair']::text[], 'Midday, when the grove is liveliest', '7am to 9:30pm daily', 'active'),
-  ('Tata Green', 'Open lawn with movable seating.', 40.75518433333333, -73.9558835, ARRAY['sun','wifi','armchair']::text[], 'Weekday mornings, before campus fills up', '7am to 9:30pm daily', 'active');
+-- scan_slug links each to its 3d-space/?scan=<slug> page.
+insert into pops (name, description, lat, lng, amenities, best_time, hours, status, scan_slug) values
+  ('Queensboro View', 'A quiet overlook with sightlines to the Queensboro Bridge.', 40.756099, -73.95594116666666, ARRAY['sun','armchair','scenic']::text[], 'Early evening, as the light hits the bridge', '7am to 9:30pm daily', 'active', 'queensboro-view'),
+  ('Squirrel Grove', 'A shaded grove with a long communal table.', 40.7551834, -73.95629346666666, ARRAY['shade','seating','armchair']::text[], 'Midday, when the grove is liveliest', '7am to 9:30pm daily', 'active', 'squirrel-grove'),
+  ('Tata Green', 'Open lawn with movable seating.', 40.75511471428571, -73.95601142857143, ARRAY['sun','wifi','armchair']::text[], 'Weekday mornings, before campus fills up', '7am to 9:30pm daily', 'active', 'tata-green');
 
 -- The 389 real NYC POPS from the official dataset, shown but not yet active.
 insert into pops (name, building_name, building_address, public_space_type, lat, lng, hours, amenities_required, permitted_amenities, status) values

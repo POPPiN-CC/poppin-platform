@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>POPPIN — what's poppin in your neighborhood?</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Grandstander:wght@600;700;800&family=Varela+Round&family=Reenie+Beanie&display=swap" rel="stylesheet">
 <style>
@@ -16,7 +15,7 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:var(--font-body);background:#fff;color:var(--ink)}
-  #app{max-width:480px;margin:0 auto;min-height:100vh;background:#fff;position:relative;overflow:hidden}
+  #app{max-width:480px;margin:0 auto;height:100vh;height:100dvh;background:#fff;position:relative;overflow:hidden}
   .wordmark{font-family:var(--font-display);font-weight:800;color:var(--ink);display:inline-flex;align-items:baseline}
   .istem{display:inline-block;position:relative;background:var(--ink);border-radius:3px}
   @keyframes dotBounce{0%,100%{transform:translateX(-50%) rotate(-45deg) translateY(0) scale(1)}50%{transform:translateX(-50%) rotate(-45deg) translateY(-7px) scale(1.05,0.92)}}
@@ -30,21 +29,57 @@
   .btn-primary{width:100%;background:var(--green);color:#fff;border:none;border-radius:14px;height:52px;font-family:var(--font-display);font-size:15px;font-weight:700;cursor:pointer;margin-bottom:12px}
   .reassure{font-family:var(--font-body);text-align:center;font-size:11px;color:#B0AEA6;margin:0}
   #sketchbg{position:absolute;inset:0;width:100%;height:100%}
-  .header{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+  #mainApp{position:relative;height:100%}
+  #listView{position:absolute;inset:0}
+  #mapEl{position:absolute;inset:0;width:100%;height:100%}
+
+  /* Map is genuinely full-screen; the header/search/filter float over it instead of
+     pushing it down, per the "Google Maps phone interface" reference in the framework. */
+  .map-overlay-top{position:absolute;top:0;left:0;right:0;z-index:500;
+    background:linear-gradient(rgba(255,255,255,0.97),rgba(255,255,255,0.85) 70%,transparent);
+    padding-top:env(safe-area-inset-top)}
+  .header{padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
   .searchicon{border:2px solid var(--green);border-radius:8px;background:none;font-size:16px;cursor:pointer;width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
-  .searchbar{margin:0 16px 12px;display:flex;align-items:center;gap:8px;background:var(--panel);border-radius:10px;padding:10px 12px}
+  .searchicon.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .searchbar{margin:0 16px 12px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   .searchbar input{border:none;background:transparent;font-size:14px;flex:1;outline:none;font-family:var(--font-body)}
-  #mapEl{height:200px;width:100%}
+
+  .filter-panel{margin:0 16px 12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+  .filter-panel h4{margin:0 0 8px;font-size:11px;font-family:var(--font-display);color:var(--muted);text-transform:uppercase;letter-spacing:0.5px}
+  .filter-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .filter-row:last-child{margin-bottom:0}
+  .filter-chip{font-family:var(--font-body);font-size:11px;font-weight:600;padding:6px 12px;border-radius:16px;
+    border:1px solid var(--line);background:var(--panel);color:#4A4A44;cursor:pointer}
+  .filter-chip.on{border-color:var(--green);background:var(--green-tint);color:var(--green-text)}
+
+  /* Draggable bottom sheet — position is driven by JS setting `top` in px (not transform),
+     snapped to one of three fractions of #listView's height on release. */
+  #listSheet{position:absolute;left:0;right:0;bottom:0;z-index:450;background:#fff;
+    border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,0.14);
+    display:flex;flex-direction:column;overflow:hidden}
+  .sheet-handle-wrap{padding:10px 0 4px;display:flex;justify-content:center;cursor:grab;touch-action:none;flex-shrink:0}
+  .sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--line)}
+  .sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;padding-bottom:24px}
   .legend{display:flex;align-items:center;gap:8px;padding:10px 16px 4px}
   .legend .track{flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,#0EA5A0,#1FBF6B,#7FBF3F,#D9A521,#E8763D)}
   .legend span{font-size:10px;color:var(--muted)}
   .section-title{padding:14px 16px 4px;font-size:16px;font-weight:700;font-family:var(--font-display);color:var(--ink)}
   .list{padding:0 16px}
+
+  /* Leaflet popups re-themed to match the card design instead of Leaflet's stock look */
+  .leaflet-popup-content-wrapper{border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.18)}
+  .leaflet-popup-content{margin:0;width:220px !important}
+  .pin-preview{display:flex;flex-direction:column;cursor:pointer;font-family:var(--font-body)}
+  .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0}
+  .pin-preview .pin-preview-body{padding:10px 12px}
+  .pin-preview .pin-preview-name{font-family:var(--font-display);font-weight:700;font-size:13px;margin:0;color:var(--ink)}
+  .pin-preview .pin-preview-meta{font-size:11px;color:var(--muted);margin:3px 0 0}
+  .pin-preview.coming-soon .pin-preview-meta{color:var(--muted)}
   .card{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:14px;margin-bottom:8px;cursor:pointer;border:1px solid var(--line);width:100%;text-align:left}
   .accentbar{width:6px;height:44px;border-radius:3px;flex-shrink:0}
   .cname{font-weight:700;font-size:14px;margin:0;font-family:var(--font-display);color:var(--ink)}
-  .cmeta{font-size:12px;color:var(--muted);margin:2px 0 0}
-  .pct{font-size:11px;font-weight:600;padding:4px 10px;border-radius:12px;white-space:nowrap;margin-left:auto}
+  .cmeta{font-size:13px;color:var(--muted);margin:4px 0 0;letter-spacing:1px}
+  .card-photo{width:48px;height:48px;border-radius:10px;background:#E9E7E1;flex-shrink:0;margin-left:auto}
   .empty{font-size:13px;color:var(--muted);padding:20px 16px;text-align:center}
   .backbtn{background:none;border:none;font-size:20px;cursor:pointer;padding:14px 16px}
   .photo{height:180px;background:#E9E7E1;margin:0;border-radius:0}
@@ -58,27 +93,30 @@
   .btn-space{width:100%;color:#fff;border:none;border-radius:14px;height:50px;font-family:var(--font-display);font-size:15px;font-weight:700;cursor:pointer;margin-bottom:14px}
   @keyframes pinPulse{0%{transform:scale(0.6);opacity:0.55}100%{transform:scale(2.6);opacity:0}}
   .pulse-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--ring-color, #1FBF6B);animation:pinPulse 1.8s ease-out infinite}
-  .cluster-blob{background:#D4D2C8;opacity:0.85;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-body);color:#5A5850;border:2px solid #fff}
+  .you-are-here{width:16px;height:16px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,0.35),0 2px 6px rgba(0,0,0,0.3)}
 
   /* ---------- redesigned profile: two tabs, drag-to-rate ---------- */
+  #profileView{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff}
   .ptop{position:relative;height:120px;background:#E3DDCC}
   .picon-btn{width:28px;height:28px;border-radius:50%;background:#fff;border:none;font-size:13px;cursor:pointer}
   .pscript-tag{font-family:var(--font-script);font-size:16px;color:#4A4436;margin:0;background:rgba(255,255,255,0.9);padding:3px 9px;border-radius:7px}
   .ptabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
   .ptab-btn{padding:5px 12px;font-family:var(--font-display);font-size:11px;font-weight:700;cursor:pointer;border:none;background:var(--panel);color:#8A8A82}
   .ptab-btn.on{color:#fff;background:#1A1A1A}
-  .mini-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-  .mini-circle{width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0}
-  .waveform{flex:1;display:flex;gap:2px;height:10px;align-items:flex-end}
-  .waveform div{width:2px;background:#D8D4C8}
+  .block-label{font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;
+    letter-spacing:0.5px;text-transform:uppercase;margin:14px 0 8px}
+  .mini-add-btn{font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--green);
+    background:var(--green-tint);border:none;border-radius:14px;padding:5px 10px;cursor:pointer}
+  .activity-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+  .activity-chip{font-family:var(--font-body);font-size:12px;font-weight:600;color:#fff;
+    padding:8px 12px;border-radius:12px}
   .slider-label{font-size:10px;color:#8A8A82;font-family:var(--font-body);display:flex;justify-content:space-between;margin-bottom:5px}
   .slider-track{height:10px;border-radius:5px;position:relative;background:linear-gradient(90deg,#0EA5A0,#1FBF6B,#7FBF3F,#D9A521,#E8763D);cursor:pointer;touch-action:none}
   .slider-avgdot{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;background:#fff;border:2px solid rgba(0,0,0,0.35);transform:translate(-50%,-50%);pointer-events:none}
   .slider-handle{position:absolute;top:50%;width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid #1A1A1A;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,0.25);cursor:grab}
   .hint-text{font-family:var(--font-body);font-size:9.5px;color:#B0AEA6;text-align:center;margin:0 0 10px}
+  .space-detail{font-family:var(--font-body);font-size:13px;color:var(--ink);margin:0 0 4px}
   .amenity-pill{font-family:var(--font-body);font-size:11px;color:#5A5A54;display:flex;align-items:center;gap:5px}
-  .foodimg{height:80px;background:var(--panel);border-radius:10px}
-  .wishtag{font-family:var(--font-body);font-size:11px;font-weight:600;padding:5px 11px;border-radius:16px;border:1px solid var(--line);background:var(--panel);color:#4A4A44;cursor:pointer}
   .uploadbtn{flex:1;text-align:center;padding:10px;border:1.5px dashed #D8D4C8;border-radius:10px;font-family:var(--font-body);font-size:11px;color:#8A8A82;cursor:pointer}
   input[type=file]{display:none}
 
@@ -93,8 +131,21 @@
   .icon-opt{width:38px;height:38px;border-radius:10px;border:2px solid var(--line);background:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
   .icon-opt.on{border-color:var(--green);background:var(--green-tint)}
   .sheet input[type=text],.sheet textarea,.sheet select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-family:var(--font-body);font-size:13px;margin-bottom:12px}
-  @keyframes meetupPulse{0%{transform:scale(0.8);opacity:0.6}100%{transform:scale(2.4);opacity:0}}
-  .meetup-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--green);animation:meetupPulse 1.6s ease-out infinite}
+
+  /* ---------- live activity banner, top of What's Happening when one is open ---------- */
+  .live-banner{background:var(--green-tint);border:1px solid var(--green);border-radius:14px;
+    padding:12px;margin-bottom:16px;overflow:hidden}
+  .live-banner-photo{height:100px;background-size:cover;background-position:center;
+    border-radius:10px;margin:-12px -12px 10px}
+  .live-banner-title{font-family:var(--font-display);font-weight:700;font-size:14px;margin:0;color:var(--ink)}
+  .live-banner-time{margin-left:auto;font-family:var(--font-body);font-size:10px;color:var(--green-text);white-space:nowrap}
+  .live-banner-msg{font-family:var(--font-script);font-size:16px;color:#4A4436;margin:0 0 10px}
+  .live-banner-count{font-family:var(--font-body);font-size:11px;color:var(--green-text)}
+
+  /* ---------- media gallery, The Space tab ---------- */
+  .media-gallery{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px}
+  .media-thumb{flex-shrink:0;width:84px;height:84px;border-radius:10px;background:#E9E7E1;
+    background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font-size:22px}
 </style>
 </head>
 <body>
@@ -148,35 +199,50 @@
   </div>
 
   <div id="mainApp" style="display:none">
-    <div class="header">
-      <span class="wordmark" style="font-size:19px"><span>P</span><span class="istem" style="width:4px;height:14px;margin:0 1px"><span class="pindot" style="width:9px;height:9px;top:-11px"></span></span><span>PPIN</span></span>
-      <div style="display:flex;align-items:center;gap:8px">
-        <a class="searchicon" href="3d-space/" target="_blank" rel="noopener" title="3D space prototype (dev)" style="text-decoration:none">&#127958;&#65039;</a>
-        <button class="searchicon" onclick="window.toggleSearch()" aria-label="Search">&#9906;</button>
-      </div>
-    </div>
-    <div id="searchbar" class="searchbar" style="display:none">
-      <input id="searchBox" placeholder="What's poppin near me?" oninput="onSearch()"/>
-    </div>
 
     <div id="listView">
-      <div id="mapEl" style="position:relative"></div>
-      <button id="dropPinBtn" onclick="window.openDropPin()" style="position:relative;margin:-52px 16px 12px auto;display:block;background:var(--green);color:#fff;border:none;border-radius:24px;padding:10px 18px;font-family:var(--font-display);font-weight:700;font-size:12px;box-shadow:0 4px 12px rgba(31,191,107,0.35);z-index:400;cursor:pointer">&#128204; Drop a pin</button>
-      <div class="legend"><span>Quiet</span><div class="track"></div><span>Lively</span></div>
-      <div class="section-title" id="sectionTitle">POPS I can walk to</div>
-      <div id="listCards" class="list"></div>
+      <div id="mapEl"></div>
+
+      <div class="map-overlay-top">
+        <div class="header">
+          <span class="wordmark" style="font-size:19px"><span>POPP</span><span class="istem" style="width:4px;height:14px;margin:0 1px"><span class="pindot" style="width:9px;height:9px;top:-11px"></span></span><span>N</span></span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <a class="searchicon" href="3d-space/" target="_blank" rel="noopener" title="3D space prototype (dev)" style="text-decoration:none">&#127958;&#65039;</a>
+            <button class="searchicon" id="filterIcon" onclick="window.toggleFilters()" aria-label="Filter">&#127899;&#65039;</button>
+            <button class="searchicon" onclick="window.toggleSearch()" aria-label="Search">&#9906;</button>
+          </div>
+        </div>
+        <div id="searchbar" class="searchbar" style="display:none">
+          <input id="searchBox" placeholder="What's poppin near me?" oninput="onSearch()"/>
+        </div>
+        <div id="filterPanel" class="filter-panel" style="display:none">
+          <h4>Distance</h4>
+          <div class="filter-row" id="filterDistance"></div>
+          <h4>Liveliness</h4>
+          <div class="filter-row" id="filterLiveliness"></div>
+          <h4>Activities</h4>
+          <div class="filter-row" id="filterActivities"></div>
+        </div>
+      </div>
+
+      <div id="listSheet">
+        <div class="sheet-handle-wrap" id="sheetHandle"><div class="sheet-handle"></div></div>
+        <div class="sheet-body">
+          <div class="legend"><span>Quiet</span><div class="track"></div><span>Lively</span></div>
+          <div class="section-title" id="sectionTitle">POPS I can walk to</div>
+          <div id="listCards" class="list"></div>
+        </div>
+      </div>
     </div>
 
     <div id="profileView" style="display:none"></div>
   </div>
 
   <div id="dropPinModal" style="display:none"></div>
-  <div id="inviteCardOverlay" style="display:none"></div>
 
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script type="module">
 let createClient = null;
 try {
@@ -225,12 +291,232 @@ let currentLocation = null;
 let allPops = [];
 let leafletMap = null;
 let markerLayer = null;
-let clusterLayer = null;
-let meetupLayer = null;
+let youAreHereMarker = null;
 
-const COMING_SOON_ICON = L.divIcon({
-  html: '<div style="width:14px;height:14px;border-radius:50%;background:#D4D2C8;border:2px solid #fff;opacity:0.85"></div>',
-  className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+const YOU_ARE_HERE_ICON = L.divIcon({
+  html: '<div class="you-are-here"></div>',
+  className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+});
+
+function renderUserLocationMarker() {
+  if (!leafletMap || !currentLocation) return;
+  const pos = [currentLocation.lat, currentLocation.lng];
+  if (youAreHereMarker) { youAreHereMarker.setLatLng(pos); return; }
+  youAreHereMarker = L.marker(pos, { icon: YOU_ARE_HERE_ICON, zIndexOffset: 2000 }).addTo(leafletMap);
+}
+
+// The framework's 8 broad activity categories. `color` is what a submitted activity's
+// box is tinted (Screen 3, "Activities Here"); `keywords` stays only as a fallback for
+// rows submitted before wishes.category existed — new submissions set category directly.
+const ACTIVITY_CATEGORIES = [
+  { id: 'work', label: 'Work & Focus', emoji: '💻', color: '#4A90D9', keywords: ['work', 'laptop', 'study', 'focus', 'read', 'book'] },
+  { id: 'arts', label: 'Arts & Culture', emoji: '🎨', color: '#B565D9', keywords: ['art', 'music', 'museum', 'culture', 'paint', 'draw'] },
+  { id: 'social', label: 'Social & Group', emoji: '🧑‍🤝‍🧑', color: '#FF6B9D', keywords: ['friend', 'group', 'hang', 'social', 'meet'] },
+  { id: 'food', label: 'Food & Leisure', emoji: '☕', color: '#F2A65A', keywords: ['food', 'coffee', 'lunch', 'snack', 'leisure', 'relax'] },
+  { id: 'civic', label: 'Community & Civic', emoji: '🏛️', color: '#6C7A89', keywords: ['community', 'civic', 'volunteer', 'event'] },
+  { id: 'sports', label: 'Sports & Games', emoji: '⚽', color: '#EF5350', keywords: ['sport', 'game', 'ball', 'frisbee', 'chess', 'play'] },
+  { id: 'nature', label: 'Nature & Animals', emoji: '🌳', color: '#3C8D5A', keywords: ['nature', 'dog', 'animal', 'tree', 'walk', 'garden'] },
+  { id: 'being', label: 'Just Being There', emoji: '🌤️', color: '#8A8A82', keywords: ['sit', 'vibe', 'chill', 'just', 'being'] }
+];
+
+function categoryFor(tagRow) {
+  if (tagRow.category) return ACTIVITY_CATEGORIES.find(c => c.id === tagRow.category) || null;
+  const lower = (tagRow.tag || '').toLowerCase();
+  return ACTIVITY_CATEGORIES.find(c => c.keywords.some(k => lower.includes(k))) || null;
+}
+
+// Icon language for list cards. Keyword-matched (not exact-match) because most real POPS
+// only have the CSV's raw amenities_required/permitted_amenities text ("Trees on Street",
+// "Water Feature", etc.), not the hand-curated slugs the 3 pilot spaces use.
+const AMENITY_ICON_MAP = [
+  { match: ['seating', 'tables', 'armchair'], icon: '🪑' },
+  { match: ['tree', 'planting', 'landscap', 'garden'], icon: '🌳' },
+  { match: ['water feature'], icon: '💧' },
+  { match: ['bicycle'], icon: '🚲' },
+  { match: ['drinking fountain'], icon: '🚰' },
+  { match: ['food service', 'food'], icon: '☕' },
+  { match: ['retail frontage'], icon: '🛍️' },
+  { match: ['lighting'], icon: '💡' },
+  { match: ['climate control'], icon: '🌡️' },
+  { match: ['restroom'], icon: '🚻' },
+  { match: ['artwork'], icon: '🎨' },
+  { match: ['subway'], icon: '🚇' },
+  { match: ['escalator', 'elevator'], icon: '⬆️' },
+  { match: ['wifi'], icon: '📶' },
+  { match: ['sun', 'shade'], icon: '☀️' },
+  { match: ['scenic'], icon: '🌇' },
+  { match: ['plug'], icon: '🔌' }
+];
+
+function amenityIconsFor(p) {
+  const raw = [].concat(p.amenities || [], p.amenities_required || [], p.permitted_amenities || []);
+  const icons = [];
+  raw.forEach(a => {
+    const lower = String(a).toLowerCase();
+    if (!lower || lower === 'none' || lower.includes('other')) return;
+    const found = AMENITY_ICON_MAP.find(m => m.match.some(k => lower.includes(k)));
+    if (found && !icons.includes(found.icon)) icons.push(found.icon);
+  });
+  return icons.slice(0, 4);
+}
+
+// activityTags: rows from getActivityTagsByPops[popsId], already vote-sorted by the caller.
+function activityIconsFor(activityTags) {
+  const icons = [];
+  activityTags.forEach(t => {
+    const cat = categoryFor(t);
+    if (cat && !icons.includes(cat.emoji)) icons.push(cat.emoji);
+  });
+  return icons.slice(0, 3);
+}
+
+const activeFilters = { distance: null, liveliness: null, activities: new Set() };
+
+// Batched (one query for every POPS at once) rather than one query per POPS — with all
+// ~392 real spaces now rendering as individual pins (see loadList), N+1 queries per pin
+// would mean hundreds of sequential round trips just to draw the map.
+async function getActivityTagsByPops(popsIds) {
+  const result = {};
+  popsIds.forEach(id => { result[id] = []; });
+  if (!supabase || !popsIds.length) return result;
+  const { data } = await supabase.from('wishes').select('pops_id,tag,votes').in('pops_id', popsIds).eq('kind', 'activity');
+  (data || []).forEach(r => { result[r.pops_id].push(r); });
+  return result;
+}
+
+async function getRecentlyActiveSet(popsIds) {
+  if (!supabase || !popsIds.length) return new Set();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data } = await supabase.from('traces').select('pops_id').in('pops_id', popsIds).gt('created_at', oneHourAgo);
+  return new Set((data || []).map(r => r.pops_id));
+}
+
+async function getRatingsByPops(popsIds) {
+  const result = {};
+  popsIds.forEach(id => { result[id] = { safety: 50, crowd: 50, welcome: 50, count: 0 }; });
+  if (!supabase || !popsIds.length) return result;
+  const { data } = await supabase.from('ratings').select('pops_id,safety,crowd,welcome').in('pops_id', popsIds);
+  const grouped = {};
+  (data || []).forEach(r => { (grouped[r.pops_id] = grouped[r.pops_id] || []).push(r); });
+  Object.keys(grouped).forEach(id => {
+    const rows = grouped[id];
+    const n = rows.length;
+    const sum = rows.reduce((a, r) => ({ safety: a.safety + r.safety, crowd: a.crowd + r.crowd, welcome: a.welcome + r.welcome }), { safety: 0, crowd: 0, welcome: 0 });
+    result[id] = { safety: Math.round(sum.safety / n), crowd: Math.round(sum.crowd / n), welcome: Math.round(sum.welcome / n), count: n };
+  });
+  return result;
+}
+
+// rows: the raw {tag, category, votes} objects from getActivityTagsByPops[popsId].
+function matchesActivityFilter(rows) {
+  if (activeFilters.activities.size === 0) return true;
+  if (!rows.length) return false;
+  return rows.some(r => {
+    const cat = categoryFor(r);
+    return cat && activeFilters.activities.has(cat.id);
+  });
+}
+
+function renderFilterChips() {
+  document.getElementById('filterDistance').innerHTML = [5, 10, 15].map(m =>
+    '<button class="filter-chip" data-min="' + m + '" onclick="window.setDistanceFilter(' + m + ')">' + m + ' min walk</button>'
+  ).join('');
+  document.getElementById('filterLiveliness').innerHTML = ['quiet', 'balanced', 'lively'].map(v =>
+    '<button class="filter-chip" data-v="' + v + '" onclick="window.setLivelinessFilter(\'' + v + '\')">' + v.charAt(0).toUpperCase() + v.slice(1) + '</button>'
+  ).join('');
+  document.getElementById('filterActivities').innerHTML = ACTIVITY_CATEGORIES.map(c =>
+    '<button class="filter-chip" data-id="' + c.id + '" onclick="window.toggleActivityFilter(\'' + c.id + '\')">' + c.emoji + ' ' + c.label + '</button>'
+  ).join('');
+  syncFilterChipStates();
+}
+
+function syncFilterChipStates() {
+  document.querySelectorAll('#filterDistance .filter-chip').forEach(b => b.classList.toggle('on', Number(b.dataset.min) === activeFilters.distance));
+  document.querySelectorAll('#filterLiveliness .filter-chip').forEach(b => b.classList.toggle('on', b.dataset.v === activeFilters.liveliness));
+  document.querySelectorAll('#filterActivities .filter-chip').forEach(b => b.classList.toggle('on', activeFilters.activities.has(b.dataset.id)));
+}
+
+window.setDistanceFilter = function (mins) {
+  activeFilters.distance = activeFilters.distance === mins ? null : mins;
+  syncFilterChipStates();
+  loadList(document.getElementById('searchBox').value);
+};
+window.setLivelinessFilter = function (v) {
+  activeFilters.liveliness = activeFilters.liveliness === v ? null : v;
+  syncFilterChipStates();
+  loadList(document.getElementById('searchBox').value);
+};
+window.toggleActivityFilter = function (id) {
+  if (activeFilters.activities.has(id)) activeFilters.activities.delete(id); else activeFilters.activities.add(id);
+  syncFilterChipStates();
+  loadList(document.getElementById('searchBox').value);
+};
+
+window.toggleFilters = function () {
+  const panel = document.getElementById('filterPanel');
+  const icon = document.getElementById('filterIcon');
+  const show = panel.style.display === 'none';
+  panel.style.display = show ? 'block' : 'none';
+  icon.classList.toggle('on', show);
+  if (show) document.getElementById('searchbar').style.display = 'none';
+};
+
+// ---------------- draggable bottom sheet ----------------
+// Position is driven by setting `top` in px on #listSheet, snapped on release to one of
+// three fractions of #listView's height — simplest way to get Google-Maps-style pull-up
+// behavior without pulling in a whole gesture library for it.
+const SHEET_SNAPS = { peek: 0.82, half: 0.55, full: 0.1 };
+let currentSheetSnap = 'half';
+
+function applySheetSnap(snap, animate) {
+  const container = document.getElementById('listView');
+  const sheet = document.getElementById('listSheet');
+  if (!container || !sheet) return;
+  const h = container.clientHeight;
+  sheet.style.transition = animate === false ? 'none' : 'top .25s ease';
+  sheet.style.top = Math.round(h * SHEET_SNAPS[snap]) + 'px';
+  currentSheetSnap = snap;
+}
+
+(function initSheetDrag() {
+  const handle = document.getElementById('sheetHandle');
+  const sheet = document.getElementById('listSheet');
+  const container = document.getElementById('listView');
+  let dragging = false, startY = 0, startTop = 0;
+
+  handle.addEventListener('pointerdown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startTop = sheet.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    sheet.style.transition = 'none';
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const h = container.clientHeight;
+    const minTop = h * SHEET_SNAPS.full;
+    const maxTop = h * SHEET_SNAPS.peek;
+    const top = Math.max(minTop, Math.min(maxTop, startTop + (e.clientY - startY)));
+    sheet.style.top = top + 'px';
+  });
+  handle.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    const h = container.clientHeight;
+    const currentFrac = (sheet.getBoundingClientRect().top - container.getBoundingClientRect().top) / h;
+    let nearest = 'half', nearestDist = Infinity;
+    Object.keys(SHEET_SNAPS).forEach(name => {
+      const d = Math.abs(SHEET_SNAPS[name] - currentFrac);
+      if (d < nearestDist) { nearestDist = d; nearest = name; }
+    });
+    applySheetSnap(nearest);
+  });
+  handle.addEventListener('pointercancel', () => { dragging = false; });
+})();
+
+window.addEventListener('resize', () => {
+  applySheetSnap(currentSheetSnap, false);
+  if (leafletMap) leafletMap.invalidateSize();
 });
 
 async function getAverages(popsId) {
@@ -271,9 +557,13 @@ window.enterApp = function () {
   document.getElementById('onboarding').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
   localStorage.setItem('poppin_onboarded', '1');
+  renderFilterChips();
+  applySheetSnap('half', false);
   initMap();
-  loadList('');
-  loadMeetups();
+  renderUserLocationMarker();
+  // Load active meetups first so the initial marker render already knows which POPS
+  // pins should pulse — otherwise pulsing would only appear after some later reload.
+  loadMeetups().then(() => loadList(''));
 };
 
 if (localStorage.getItem('poppin_onboarded')) {
@@ -281,7 +571,17 @@ if (localStorage.getItem('poppin_onboarded')) {
 }
 
 navigator.geolocation && navigator.geolocation.getCurrentPosition(
-  pos => { currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+  pos => {
+    currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    renderUserLocationMarker();
+    // enterApp's own loadList('') call almost always runs before this resolves — geolocation
+    // is async and typically slower than the initial render — so the "5 closest" cap never
+    // saw a location the first time. Re-run once it's actually available, but only if the
+    // app is already showing (no point re-fetching while still on the onboarding screen).
+    if (document.getElementById('mainApp').style.display !== 'none') {
+      loadList(document.getElementById('searchBox').value);
+    }
+  },
   () => { currentLocation = null; },
   { enableHighAccuracy: true, timeout: 8000 }
 );
@@ -289,28 +589,37 @@ navigator.geolocation && navigator.geolocation.getCurrentPosition(
 window.toggleSearch = function () {
   const bar = document.getElementById('searchbar');
   bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
-  if (bar.style.display === 'flex') document.getElementById('searchBox').focus();
+  if (bar.style.display === 'flex') {
+    document.getElementById('filterPanel').style.display = 'none';
+    document.getElementById('filterIcon').classList.remove('on');
+    document.getElementById('searchBox').focus();
+  }
 };
 
 function initMap() {
   if (leafletMap) return;
   leafletMap = L.map('mapEl', { zoomControl: false }).setView([40.74, -73.96], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+  // CartoDB Positron: free, keyless, light basemap — matches the framework's map spec
+  // without the billing/account surface a MapTiler key would introduce.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19, subdomains: 'abcd'
   }).addTo(leafletMap);
+  // One flat marker layer, no clustering — every POPS renders individually at its real
+  // location, simulated as fully active (no gray/inactive tier). Density is instead
+  // managed by thinMarkersForView, re-run whenever the view settles.
   markerLayer = L.layerGroup().addTo(leafletMap);
-  clusterLayer = L.markerClusterGroup({
-    maxClusterRadius: 50,
-    iconCreateFunction: function (cluster) {
-      const count = cluster.getChildCount();
-      const size = count > 100 ? 40 : count > 20 ? 32 : 24;
-      return L.divIcon({
-        html: '<div class="cluster-blob" style="width:' + size + 'px;height:' + size + 'px;font-size:' + (size > 30 ? 11 : 9) + 'px">' + count + '</div>',
-        className: '', iconSize: [size, size]
-      });
-    }
-  }).addTo(leafletMap);
-  meetupLayer = L.layerGroup().addTo(leafletMap);
+  leafletMap.on('zoomend moveend', () => {
+    renderMapMarkers(thinMarkersForView(lastMapList), lastActivityTagsByPops, lastRecentlyActiveSet);
+  });
+  // Tapping a list card focuses that POPS's pin (see window.focusPopOnMap) instead of
+  // opening the profile directly; tapping the open map background drops the "always show
+  // this pin regardless of thinning" override so normal density thinning resumes. Marker
+  // clicks don't bubble to this — only genuine taps on empty map area do. (Deliberately
+  // not using the map's 'popupclose' event for this: renderMapMarkers's own clearLayers()
+  // fires popupclose on itself whenever it re-renders while this popup happens to be open,
+  // which nulled the flag before the same render finished re-opening the popup — the popup
+  // would flash and immediately vanish.)
+  leafletMap.on('click', () => { focusPopId = null; });
 }
 
 const ACTIVITY_ICONS = [
@@ -325,23 +634,10 @@ function iconForActivity(topTag) {
   return found ? found.icon : null;
 }
 
-async function getTopActivity(popsId) {
-  if (!supabase) return null;
-  const { data } = await supabase.from('wishes').select('tag').eq('pops_id', popsId).eq('kind', 'activity').order('votes', { ascending: false }).limit(1);
-  return data && data[0] ? data[0].tag : null;
-}
-
-async function wasRecentlyActive(popsId) {
-  if (!supabase) return false;
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data } = await supabase.from('traces').select('id').eq('pops_id', popsId).gt('created_at', oneHourAgo).limit(1);
-  return !!(data && data.length > 0);
-}
-
-function activePinIcon(color, ratingCount, activityIcon, isPulsing) {
+function activePinIcon(color, ratingCount, activityIcon, isPulsing, ringColor) {
   const size = Math.min(24 + Math.round(ratingCount * 1.5), 44);
   const emoji = activityIcon ? '<span style="font-size:' + Math.round(size * 0.45) + 'px;line-height:1">' + activityIcon + '</span>' : '';
-  const pulse = isPulsing ? '<div class="pulse-ring" style="--ring-color:' + color + '"></div>' : '';
+  const pulse = isPulsing ? '<div class="pulse-ring" style="--ring-color:' + (ringColor || color) + '"></div>' : '';
   return L.divIcon({
     html: '<div style="position:relative;width:' + size + 'px;height:' + size + 'px">' + pulse +
       '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25)">' + emoji + '</div></div>',
@@ -349,32 +645,114 @@ function activePinIcon(color, ratingCount, activityIcon, isPulsing) {
   });
 }
 
-async function renderMapMarkers(activeList, comingSoonList) {
-  if (!markerLayer || !clusterLayer) return;
-  markerLayer.clearLayers();
-  clusterLayer.clearLayers();
-  const allPoints = [];
+// State kept so the zoomend/moveend listener (in initMap) can re-thin and re-render
+// without re-querying Supabase — only loadList's own calls trigger real data fetches.
+let lastMapList = [];
+let lastActivityTagsByPops = {};
+let lastRecentlyActiveSet = new Set();
+let markerById = {};
+// Set by window.focusPopOnMap (a list-card tap) — forces that one POPS's pin to survive
+// thinning and auto-opens its preview, until the preview is dismissed (popupclose, initMap).
+let focusPopId = null;
+// popsId -> its most recent still-open meetup row, refreshed by loadMeetups(). A live
+// activity doesn't get its own map pin — it makes the POPS's own pin pulse green instead.
+let activeMeetupsByPops = {};
 
-  for (const p of activeList) {
-    if (p.lat == null || p.lng == null) continue;
-    const [topTag, recent] = await Promise.all([getTopActivity(p.id), wasRecentlyActive(p.id)]);
-    const icon = activePinIcon(p._color, p._count || 0, iconForActivity(topTag), recent);
-    const marker = L.marker([p.lat, p.lng], { icon }).addTo(markerLayer);
-    marker.on('click', () => window.openProfile(p.id));
-    allPoints.push([p.lat, p.lng]);
+// Not clustering with count bubbles — the user found that overwhelming with ~392 pins.
+// Instead: a light grid-based thinning that keeps at most one pin per screen-pixel cell.
+// Re-run on every zoomend/moveend, so cells cover less real ground as you zoom in and
+// previously-hidden pins that shared a cell with a visible one split apart and reveal.
+function thinMarkersForView(list) {
+  if (!leafletMap) return list;
+  const zoom = leafletMap.getZoom();
+  const bounds = leafletMap.getBounds().pad(0.3);
+  const cellPx = 56;
+  const seen = new Set();
+  const kept = [];
+  list.slice()
+    .sort((a, b) => (b._count || 0) - (a._count || 0)) // more-rated spots win a shared cell
+    .forEach(p => {
+      if (p.lat == null || p.lng == null || !bounds.contains([p.lat, p.lng])) return;
+      const pt = leafletMap.project([p.lat, p.lng], zoom);
+      const key = Math.round(pt.x / cellPx) + ':' + Math.round(pt.y / cellPx);
+      if (seen.has(key)) return;
+      seen.add(key);
+      kept.push(p);
+    });
+  if (focusPopId && !kept.some(p => p.id === focusPopId)) {
+    const focused = list.find(p => p.id === focusPopId);
+    if (focused) kept.push(focused);
   }
+  return kept;
+}
 
-  comingSoonList.forEach(p => {
+// No async work per pin here — everything needed (ratings, activity tags, recent-activity)
+// was already batch-fetched once in loadList. Tapping a pin (or a list card, via
+// window.focusPopOnMap) opens the same small preview card — tapping the card itself is
+// what goes to the profile, not the pin/card tap directly.
+function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
+  if (!markerLayer) return;
+  markerLayer.clearLayers();
+  markerById = {};
+
+  list.forEach(p => {
     if (p.lat == null || p.lng == null) return;
-    const marker = L.marker([p.lat, p.lng], { icon: COMING_SOON_ICON });
-    marker.on('click', () => window.showComingSoon(p.name));
-    clusterLayer.addLayer(marker);
-    allPoints.push([p.lat, p.lng]);
+    const tags = (activityTagsByPops[p.id] || []).slice().sort((a, b) => b.votes - a.votes);
+    const topTag = tags.length ? tags[0].tag : null;
+    const hasLiveActivity = !!activeMeetupsByPops[p.id];
+    // A live activity always pulses green, taking priority over the generic
+    // recently-active indicator (which uses the pin's own liveliness color).
+    const isPulsing = hasLiveActivity || recentlyActiveSet.has(p.id);
+    const ringColor = hasLiveActivity ? '#1FBF6B' : p._color;
+    const icon = activePinIcon(p._color, p._count || 0, iconForActivity(topTag), isPulsing, ringColor);
+    const marker = L.marker([p.lat, p.lng], { icon }).addTo(markerLayer);
+    markerById[p.id] = marker;
+    // Same icon language as the list card — amenities + recent activities, not a
+    // liveliness word and crowd word (that's what the accent bar / pin color already say).
+    const icons = amenityIconsFor(p).concat(activityIconsFor(tags));
+    const metaHtml = icons.length
+      ? icons.map(i => '<span>' + i + '</span>').join(' ')
+      : '<span style="color:#B0AEA6">Nothing logged yet</span>';
+    marker.bindPopup(
+      '<div class="pin-preview" onclick="window.openProfile(\'' + p.id + '\')">' +
+        '<div class="pin-preview-photo"></div>' +
+        '<div class="pin-preview-body">' +
+          '<p class="pin-preview-name">' + p.name + '</p>' +
+          '<p class="pin-preview-meta">' + metaHtml + '</p>' +
+        '</div></div>',
+      { closeButton: false, className: 'pin-popup', maxWidth: 220 }
+    );
   });
 
-  if (allPoints.length > 0 && leafletMap) {
-    leafletMap.fitBounds(allPoints, { padding: [20, 20] });
+  if (focusPopId && markerById[focusPopId]) {
+    markerById[focusPopId].openPopup();
   }
+}
+
+// List-card tap: behaves like tapping the pin itself (zoom + preview card), not a direct
+// profile jump. Collapses the sheet to "peek" so the map + preview are actually visible.
+window.focusPopOnMap = function (id) {
+  const p = lastMapList.find(x => x.id === id);
+  if (!p || p.lat == null || p.lng == null || !leafletMap) return;
+  focusPopId = id;
+  applySheetSnap('peek');
+  leafletMap.setView([p.lat, p.lng], Math.max(leafletMap.getZoom(), 16), { animate: true });
+  // setView may not fire zoomend/moveend if we're already centered there — render once
+  // immediately as a fallback so the preview still opens in that case.
+  renderMapMarkers(thinMarkersForView(lastMapList), lastActivityTagsByPops, lastRecentlyActiveSet);
+};
+
+// Called from real data loads (loadList): stores the full matching set, thins it for
+// the current view, and — unlike the zoomend/moveend listener — re-fits the map to the
+// full set of matches (not just the thinned ones, or fitBounds would shrink every time
+// thinning ran and fight the user's own zoom/pan).
+function updateMapMarkers(fullList, activityTagsByPops, recentlyActiveSet) {
+  lastMapList = fullList;
+  lastActivityTagsByPops = activityTagsByPops;
+  lastRecentlyActiveSet = recentlyActiveSet;
+  renderMapMarkers(thinMarkersForView(fullList), activityTagsByPops, recentlyActiveSet);
+  const points = fullList.filter(p => p.lat != null && p.lng != null).map(p => [p.lat, p.lng]);
+  if (points.length && leafletMap) leafletMap.fitBounds(points, { padding: [20, 20] });
 }
 
 async function loadList(searchText) {
@@ -387,52 +765,96 @@ async function loadList(searchText) {
   const { data, error } = await supabase.from('pops').select('*').order('name');
   if (error) { wrap.innerHTML = '<p class="empty">Could not load spaces. Check your Supabase config.</p>'; return; }
   allPops = data || [];
+  focusPopId = null; // fresh data load — any prior list-tap focus no longer applies
 
-  // Map shows everything: active pins in real vibe color, coming-soon pins muted gray.
-  const activeOnly = allPops.filter(p => p.status === 'active');
-  const comingSoon = allPops.filter(p => p.status !== 'active');
-  const activeRows = await Promise.all(activeOnly.map(async p => ({ p, avg: await getAverages(p.id) })));
-  await renderMapMarkers(
-    activeRows.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.avg)), _count: r.avg.count })),
-    comingSoon
+  // Prototype simulates every real POPS as active: no gray/inactive tier, no clustering,
+  // every pin renders individually at its real location and is fully interactive.
+  const ids = allPops.map(p => p.id);
+  const [ratingsByPops, activityTagsByPops, recentlyActiveSet] = await Promise.all([
+    getRatingsByPops(ids),
+    getActivityTagsByPops(ids),
+    getRecentlyActiveSet(ids)
+  ]);
+  const rows = allPops.map(p => ({ p, avg: ratingsByPops[p.id] }));
+
+  // Search matches POPS name or its street address; filters (distance/liveliness/activities)
+  // stack on top. With zero activity tags logged anywhere yet, any activities filter
+  // correctly leaves zero results — matchesActivityFilter returns false for an empty tag list.
+  const search = (searchText || '').toLowerCase().trim();
+  const filtered = rows.filter(r => {
+    if (search) {
+      const nameMatch = r.p.name.toLowerCase().includes(search);
+      const addrMatch = (r.p.building_address || '').toLowerCase().includes(search);
+      if (!nameMatch && !addrMatch) return false;
+    }
+    if (activeFilters.distance) {
+      const mins = walkMinutesTo(r.p);
+      if (mins === null || mins > activeFilters.distance) return false;
+    }
+    if (activeFilters.liveliness) {
+      const liveliness = computeLiveliness(r.avg);
+      const band = liveliness < 35 ? 'quiet' : liveliness < 65 ? 'balanced' : 'lively';
+      if (band !== activeFilters.liveliness) return false;
+    }
+    if (activeFilters.activities.size > 0 && !matchesActivityFilter(activityTagsByPops[r.p.id] || [])) {
+      return false;
+    }
+    return true;
+  });
+
+  // Map shows every match (thinned for on-screen density, see thinMarkersForView) —
+  // search/filters narrow the candidate set for both the map and the list together.
+  updateMapMarkers(
+    filtered.map(r => Object.assign({}, r.p, { _color: vibeColor(computeLiveliness(r.avg)), _count: r.avg.count, _avg: r.avg })),
+    activityTagsByPops,
+    recentlyActiveSet
   );
 
-  // List only shows active, tappable spaces, no dead ends in the actual list.
-  const filtered = searchText ? activeRows.filter(r => r.p.name.toLowerCase().includes(searchText.toLowerCase())) : activeRows;
+  // The list itself is capped to the 5 closest by default, so it's not just as
+  // overwhelming a wall as the unthinned map would be — but that cap only applies when
+  // browsing with no search/filters active; a real search or filter should show every match.
+  const hasSearchOrFilters = !!search || !!activeFilters.distance || !!activeFilters.liveliness || activeFilters.activities.size > 0;
+  let listRows = filtered;
+  if (!hasSearchOrFilters && currentLocation) {
+    listRows = filtered.slice()
+      .sort((a, b) => walkMinutesTo(a.p) - walkMinutesTo(b.p))
+      .slice(0, 5);
+  }
 
   const titleEl = document.getElementById('sectionTitle');
-  const withinTenMin = filtered.filter(r => {
-    const mins = walkMinutesTo(r.p);
-    return mins !== null && mins <= 10;
-  });
-  if (currentLocation && filtered.length > 0 && withinTenMin.length === filtered.length) {
-    const n = withinTenMin.length;
-    titleEl.textContent = n + (n === 1 ? ' spot' : ' spots') + ' within a 10-minute vibe check';
+  if (hasSearchOrFilters) {
+    titleEl.textContent = listRows.length + (listRows.length === 1 ? ' spot matches' : ' spots match');
+  } else if (currentLocation && listRows.length > 0 && listRows.every(r => { const m = walkMinutesTo(r.p); return m !== null && m <= 10; })) {
+    titleEl.textContent = listRows.length + (listRows.length === 1 ? ' spot' : ' spots') + ' within a 10-minute vibe check';
+  } else if (currentLocation) {
+    titleEl.textContent = 'Closest spots to you';
   } else {
     titleEl.textContent = 'POPS I can walk to';
   }
 
-  if (filtered.length === 0) {
-    wrap.innerHTML = '<p class="empty">No active spaces match yet. The map above shows every real POPS, more get activated as the pilot grows.</p>';
+  if (listRows.length === 0) {
+    wrap.innerHTML = '<p class="empty">No spaces match your search and filters. Try clearing some.</p>';
     return;
   }
-  wrap.innerHTML = filtered.map(({ p, avg }) => {
-    const liveliness = computeLiveliness(avg);
-    const color = vibeColor(liveliness);
-    const vibeWord = liveliness < 35 ? 'Quiet' : liveliness < 65 ? 'Balanced' : 'Lively';
-    const crowdWord = avg.crowd < 45 ? 'Not crowded' : avg.crowd < 70 ? 'Some seats' : 'Crowded';
-    return '<button class="card" onclick="window.openProfile(\'' + p.id + '\')">' +
+  // Liveliness shows only as the accent bar's color now — no "Balanced"-style word, no
+  // percentage badge. What replaces that text line: amenity + recent-activity emoji icons,
+  // per the framework's icon language, with a square photo placeholder on the right.
+  wrap.innerHTML = listRows.map(({ p, avg }) => {
+    const color = vibeColor(computeLiveliness(avg));
+    const actTags = (activityTagsByPops[p.id] || []).slice().sort((a, b) => b.votes - a.votes);
+    const icons = amenityIconsFor(p).concat(activityIconsFor(actTags));
+    const metaHtml = icons.length
+      ? icons.map(i => '<span>' + i + '</span>').join(' ')
+      : '<span style="color:#B0AEA6">Nothing logged yet</span>';
+    return '<button class="card" onclick="window.focusPopOnMap(\'' + p.id + '\')">' +
       '<div class="accentbar" style="background:' + color + '"></div>' +
-      '<div style="flex:1"><p class="cname">' + p.name + '</p>' +
-      '<p class="cmeta">' + vibeWord + ' &middot; ' + crowdWord + '</p></div>' +
-      '<span class="pct" style="background:' + color + '22;color:' + color + '">' + avg.welcome + '%</span>' +
+      '<div style="flex:1;min-width:0"><p class="cname">' + p.name + '</p>' +
+      '<p class="cmeta">' + metaHtml + '</p></div>' +
+      '<div class="card-photo"></div>' +
       '</button>';
   }).join('');
 }
 
-window.showComingSoon = function (name) {
-  alert(name + ' is a real NYC POPS, we just haven\'t gotten to it yet. Check back soon!');
-};
 
 // ---------------- Happening: live activity pins ----------------
 const ACTIVITY_ICON_SET = ['🎸', '🥏', '🍕', '🌇', '♟️', '📚', '🐕', '🎨', '🧘', '⚽', '📷', '🎤'];
@@ -511,7 +933,7 @@ window.closeDropPin = function () {
 };
 
 window.postMeetup = async function (popsId) {
-  if (!supabase) { alert('Connect Supabase first to post a live pin.'); return; }
+  if (!supabase) { alert('Connect Supabase first to post a live activity.'); return; }
   const activity = document.getElementById('activityName').value.trim();
   const message = document.getElementById('activityMsg').value.trim();
   let durationMin = parseInt(document.getElementById('activityDuration').value, 10);
@@ -536,80 +958,80 @@ window.postMeetup = async function (popsId) {
   }
 
   const { error } = await supabase.from('meetups').insert(row);
-  if (error) { alert('Could not post. Try again.'); return; }
+  if (error) { console.error(error); alert('Could not post. Try again.'); return; }
   window.closeDropPin();
-  loadMeetups();
+  await loadMeetups();
+  // Refresh the map so this POPS's own pin starts pulsing, and the profile banner if
+  // we're looking at the same space right now (Live Activity is opened from the profile).
+  renderMapMarkers(thinMarkersForView(lastMapList), lastActivityTagsByPops, lastRecentlyActiveSet);
+  if (currentPops && currentPops.id === popsId) renderLiveActivityBanner(currentPops);
 };
 
+// A live activity does not get its own map pin — it makes the POPS's own pin pulse green
+// (see renderMapMarkers) and shows as a banner at the top of that POPS's "What's Happening"
+// tab (see renderLiveActivityBanner), reached from the profile rather than a separate tap
+// target on the map.
 async function loadMeetups() {
-  if (!supabase || !leafletMap) return [];
+  activeMeetupsByPops = {};
+  if (!supabase) return activeMeetupsByPops;
   const nowIso = new Date().toISOString();
-  const { data } = await supabase.from('meetups').select('*').gt('expires_at', nowIso);
-  const meetups = data || [];
-  if (meetupLayer) meetupLayer.clearLayers();
-  meetups.forEach(m => {
-    if (m.lat == null || m.lng == null) return;
-    const thumb = m.post_type === 'photo' && m.photo_path
-      ? supabase.storage.from('meetup-photos').getPublicUrl(m.photo_path).data.publicUrl
-      : null;
-    const inner = thumb
-      ? '<div style="width:18px;height:18px;border-radius:50%;border:2px solid #fff;background-image:url(' + thumb + ');background-size:cover"></div>'
-      : '<div style="width:18px;height:18px;border-radius:50%;background:' + '#1FBF6B' + ';border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px">' + (m.icon || '✨') + '</div>';
-    const icon = L.divIcon({
-      html: '<div style="position:relative;width:22px;height:22px"><div class="meetup-ring"></div>' + inner + '</div>',
-      className: '', iconSize: [22, 22], iconAnchor: [11, 11]
-    });
-    const marker = L.marker([m.lat, m.lng], { icon, zIndexOffset: 1000 }).addTo(meetupLayer);
-    marker.on('click', () => window.openInviteCard(m));
+  const { data } = await supabase.from('meetups').select('*').gt('expires_at', nowIso).order('created_at', { ascending: false });
+  (data || []).forEach(m => {
+    if (!activeMeetupsByPops[m.pops_id]) activeMeetupsByPops[m.pops_id] = m; // most recent per POPS
   });
-  return meetups;
+  return activeMeetupsByPops;
 }
 
-window.openInviteCard = async function (m) {
-  const overlay = document.getElementById('inviteCardOverlay');
+async function renderLiveActivityBanner(p) {
+  const wrap = document.getElementById('liveActivityBanner');
+  if (!wrap) return;
+  const m = activeMeetupsByPops[p.id];
+  if (!m) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
   const minsLeft = Math.max(0, Math.round((new Date(m.expires_at) - new Date()) / 60000));
-  const { count } = supabase ? await supabase.from('meetup_responses').select('*', { count: 'exact', head: true }).eq('meetup_id', m.id) : { count: 0 };
   const thumbUrl = m.post_type === 'photo' && m.photo_path && supabase
     ? supabase.storage.from('meetup-photos').getPublicUrl(m.photo_path).data.publicUrl
     : null;
 
-  overlay.style.display = 'block';
-  overlay.innerHTML =
-    '<div class="sheet-backdrop" onclick="if(event.target===this)window.closeInviteCard()">' +
-      '<div class="sheet" style="padding:0;overflow:hidden">' +
-        (thumbUrl ? '<div style="height:140px;background-image:url(' + thumbUrl + ');background-size:cover;position:relative">' +
-          '<span style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:10px;font-family:var(--font-body);padding:3px 9px;border-radius:9px">&#128247; live photo</span></div>' : '') +
-        '<div style="padding:16px">' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-            (m.icon ? '<span style="font-size:18px">' + m.icon + '</span>' : '') +
-            '<p style="font-family:var(--font-display);font-weight:700;font-size:16px;margin:0;color:var(--ink)">' + m.activity + '</p>' +
-            '<span style="margin-left:auto;font-family:var(--font-body);font-size:10px;color:#8A8A82">Ends in ' + minsLeft + ' min</span>' +
-          '</div>' +
-          (m.message ? '<p style="font-family:var(--font-script);font-size:17px;color:#5A5A54;margin:0 0 10px">"' + m.message + '"</p>' : '') +
-          '<div style="display:flex;align-items:center;gap:8px">' +
-            '<span style="font-family:var(--font-body);font-size:11px;color:#8A8A82">' + (count || 0) + ' people in</span>' +
-            '<button class="btn-primary" style="width:auto;margin:0 0 0 auto;padding:8px 18px;height:auto" onclick="window.joinMeetup(\'' + m.id + '\')">I\'m in</button>' +
-          '</div>' +
-        '</div>' +
+  wrap.style.display = 'block';
+  wrap.innerHTML =
+    '<div class="live-banner">' +
+      (thumbUrl ? '<div class="live-banner-photo" style="background-image:url(' + thumbUrl + ')"></div>' : '') +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        (m.icon ? '<span style="font-size:18px">' + m.icon + '</span>' : '<span style="font-size:14px">&#128205;</span>') +
+        '<p class="live-banner-title">' + m.activity + '</p>' +
+        '<span class="live-banner-time">Ends in ' + minsLeft + ' min</span>' +
+      '</div>' +
+      (m.message ? '<p class="live-banner-msg">"' + m.message + '"</p>' : '') +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span class="live-banner-count" id="liveBannerCount">…</span>' +
+        '<button class="btn-primary" style="width:auto;margin:0 0 0 auto;padding:8px 18px;height:auto" onclick="window.joinMeetup(\'' + m.id + '\')">I\'m in</button>' +
       '</div>' +
     '</div>';
-};
 
-window.closeInviteCard = function () {
-  document.getElementById('inviteCardOverlay').style.display = 'none';
-  document.getElementById('inviteCardOverlay').innerHTML = '';
-};
+  if (supabase) {
+    const { count } = await supabase.from('meetup_responses').select('*', { count: 'exact', head: true }).eq('meetup_id', m.id);
+    const countEl = document.getElementById('liveBannerCount');
+    if (countEl) countEl.textContent = (count || 0) + ' people in';
+  }
+}
 
 window.joinMeetup = async function (meetupId) {
   if (!supabase) return;
   await supabase.from('meetup_responses').insert({ meetup_id: meetupId });
-  window.closeInviteCard();
+  if (currentPops) renderLiveActivityBanner(currentPops);
 };
 
 window.onSearch = function () { loadList(document.getElementById('searchBox').value); };
 
 let pendingRating = {};
-let profileWishes = [];
+let profileActivities = [];
+let profileMedia = [];
+let selectedActivityCategory = null;
+// No polygon data for 389 of the 392 real POPS (only the 3 pilots have a hand-drawn
+// GeoJSON boundary), so "inside" for Live Activity is a simple radius check against the
+// POPS's point coordinate — same distanceMeters() already used for walking-distance.
+const LIVE_ACTIVITY_RADIUS_METERS = 30;
 
 window.openProfile = async function (id) {
   const p = allPops.find(x => x.id === id);
@@ -618,8 +1040,15 @@ window.openProfile = async function (id) {
   const color = vibeColor(computeLiveliness(avg));
   pendingRating = { safety: avg.safety, crowd: avg.crowd, welcome: avg.welcome };
 
-  const { data: wishes } = supabase ? await supabase.from('wishes').select('*').eq('pops_id', p.id).eq('kind', 'wish').order('votes', { ascending: false }) : { data: [] };
-  profileWishes = wishes || [];
+  const { data: activityRows } = supabase
+    ? await supabase.from('wishes').select('*').eq('pops_id', p.id).eq('kind', 'activity').order('votes', { ascending: false })
+    : { data: [] };
+  profileActivities = activityRows || [];
+
+  const { data: mediaRows } = supabase
+    ? await supabase.from('media').select('*').eq('pops_id', p.id).order('created_at', { ascending: false })
+    : { data: [] };
+  profileMedia = mediaRows || [];
 
   document.getElementById('listView').style.display = 'none';
   const view = document.getElementById('profileView');
@@ -632,41 +1061,111 @@ window.openProfile = async function (id) {
       '<p class="pscript-tag" style="position:absolute;bottom:10px;left:12px">' + (p.description || 'a real spot on campus') + '</p>' +
     '</div>' +
     '<div style="padding:12px 16px 0">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
-        '<h1 class="pname" style="font-size:19px;margin:0">' + p.name + '</h1>' +
+      '<h1 class="pname" style="font-size:19px;margin:0 0 10px">' + p.name + '</h1>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
         '<div class="ptabs">' +
-          '<button class="ptab-btn on" id="tabBtnVibe" style="background:' + color + '" onclick="window.showProfileTab(\'vibe\')">Vibe</button>' +
-          '<button class="ptab-btn" id="tabBtnDetails" onclick="window.showProfileTab(\'details\')">Details</button>' +
+          '<button class="ptab-btn on" id="tabBtnHappening" style="background:' + color + '" onclick="window.showProfileTab(\'happening\')">What\'s Happening</button>' +
+          '<button class="ptab-btn" id="tabBtnSpace" onclick="window.showProfileTab(\'space\')">The Space</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="picon-btn" title="Look Inside" onclick="window.lookInside()">&#127958;&#65039;</button>' +
+          '<button class="picon-btn" title="Live Activity" onclick="window.startLiveActivity()">&#128205;</button>' +
         '</div>' +
       '</div>' +
-      '<div id="tabVibe"></div>' +
-      '<div id="tabDetails" style="display:none"></div>' +
+      '<div id="tabHappening"></div>' +
+      '<div id="tabSpace" style="display:none"></div>' +
     '</div>';
 
-  renderVibeTab(p, avg, color);
-  renderDetailsTab(p);
+  renderHappeningTab(p, avg, color);
+  renderSpaceTab(p);
 };
 
-function renderVibeTab(p, avg, color) {
-  const el = document.getElementById('tabVibe');
+// ---------------- Tab 1: What's Happening ----------------
+
+function renderHappeningTab(p, avg, color) {
+  const el = document.getElementById('tabHappening');
   el.innerHTML =
-    '<div class="mini-row">' +
-      '<div class="mini-circle" onclick="window.toggleAudio()" id="playBtn">&#9654;</div>' +
-      '<div class="waveform" id="waveform">' +
-        '<div style="height:40%"></div><div style="height:75%"></div><div style="height:55%"></div><div style="height:85%"></div><div style="height:35%"></div><div style="height:65%"></div>' +
-      '</div>' +
-      '<span style="font-family:var(--font-body);font-size:9px;color:#B0AEA6">0:14</span>' +
-      '<div class="mini-circle" onclick="alert(\'3D scan coming soon for this spot\')">&#127968;</div>' +
+    '<div id="liveActivityBanner" style="display:none"></div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+      '<p class="block-label" style="margin:8px 0">Activities Here</p>' +
+      '<button class="mini-add-btn" onclick="window.toggleActivityForm()">+ What are you up to?</button>' +
     '</div>' +
-    '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:12px 0 4px">Drag to add your read on it</p>' +
+    '<div class="activity-grid" id="activityGrid"></div>' +
+    '<div id="activityForm" style="display:none;margin-bottom:16px">' +
+      '<div class="filter-row" id="activityCategoryPicker"></div>' +
+      '<input id="activityTagInput" placeholder="Be specific, e.g. reading, chess, yoga…"/>' +
+      '<button class="btn-primary" style="margin-bottom:0" onclick="window.submitActivity()">Post</button>' +
+    '</div>' +
+
     sliderHTML('safety', 'Unsafe', 'Safe', avg.safety) +
     sliderHTML('crowd', 'Open seating', 'Crowded', avg.crowd) +
     sliderHTML('welcome', 'Welcoming', 'Closed off', avg.welcome, true) +
-    '<p class="hint-text">White dot = everyone\'s average &middot; drag the ring to add yours</p>' +
-    '<button class="btn-space" style="background:' + color + '" onclick="window.submitVibeRating()">Submit my read &amp; get directions</button>';
+    '<p class="hint-text">White dot = everyone\'s average</p>' +
+    '<div id="ratingStartWrap">' +
+      '<button class="btn-space" style="background:' + color + '" onclick="window.startRatingSubmission()">Add your read of the space!</button>' +
+    '</div>' +
+    '<div id="ratingSubmitForm" style="display:none">' +
+      '<p class="block-label" style="margin-top:0">What would make this better?</p>' +
+      '<textarea id="betterInput" rows="2" placeholder="Optional" style="width:100%;box-sizing:border-box;border:1px solid var(--line);' +
+        'border-radius:10px;padding:10px;font-family:var(--font-body);font-size:13px;margin-bottom:12px"></textarea>' +
+      '<button class="btn-space" style="background:' + color + '" onclick="window.submitVibeRating()">Submit my read</button>' +
+    '</div>';
 
-  ['safety', 'crowd', 'welcome'].forEach(key => attachSlider(key));
+  renderActivityGrid();
+  renderLiveActivityBanner(p);
 }
+
+function renderActivityGrid() {
+  const grid = document.getElementById('activityGrid');
+  if (!grid) return;
+  grid.innerHTML = profileActivities.length
+    ? profileActivities.map(a => {
+        const cat = categoryFor(a);
+        return '<span class="activity-chip" style="background:' + (cat ? cat.color : '#8A8A82') + '">' +
+          (cat ? cat.emoji + ' ' : '') + a.tag + '</span>';
+      }).join('')
+    : '<span style="font-family:var(--font-body);font-size:12px;color:#B0AEA6">Nobody\'s said what they\'re up to yet — be the first</span>';
+}
+
+window.toggleActivityForm = function () {
+  const form = document.getElementById('activityForm');
+  const show = form.style.display === 'none';
+  form.style.display = show ? 'block' : 'none';
+  if (show) {
+    selectedActivityCategory = null;
+    document.getElementById('activityTagInput').value = '';
+    document.getElementById('activityCategoryPicker').innerHTML = ACTIVITY_CATEGORIES.map(c =>
+      '<button type="button" class="filter-chip" data-id="' + c.id + '" onclick="window.pickActivityCategory(\'' + c.id + '\')">' + c.emoji + ' ' + c.label + '</button>'
+    ).join('');
+  }
+};
+
+window.pickActivityCategory = function (id) {
+  selectedActivityCategory = id;
+  document.querySelectorAll('#activityCategoryPicker .filter-chip').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+};
+
+window.submitActivity = async function () {
+  if (!supabase || !currentPops) return;
+  const tag = document.getElementById('activityTagInput').value.trim();
+  if (!tag) { alert('Say what you\'re up to first.'); return; }
+  if (!selectedActivityCategory) { alert('Pick a category first.'); return; }
+  const { data: existing, error: selectError } = await supabase.from('wishes').select('*').eq('pops_id', currentPops.id).eq('tag', tag).eq('kind', 'activity').maybeSingle();
+  if (selectError) { console.error(selectError); alert('Could not post that — check the console for details.'); return; }
+  const { error: writeError } = existing
+    ? await supabase.from('wishes').update({ votes: existing.votes + 1 }).eq('id', existing.id)
+    : await supabase.from('wishes').insert({ pops_id: currentPops.id, tag, kind: 'activity', category: selectedActivityCategory, votes: 1 });
+  if (writeError) {
+    console.error(writeError);
+    // Most likely cause: the Phase 5 migration (wishes.category) hasn't been run yet.
+    alert('Could not post that — check the console for details. If this is your first activity post, make sure the wishes.category migration has been run in Supabase.');
+    return;
+  }
+  document.getElementById('activityForm').style.display = 'none';
+  const { data: activityRows } = await supabase.from('wishes').select('*').eq('pops_id', currentPops.id).eq('kind', 'activity').order('votes', { ascending: false });
+  profileActivities = activityRows || [];
+  renderActivityGrid();
+};
 
 function sliderHTML(key, leftLabel, rightLabel, avgValue, invert) {
   const displayAvg = invert ? 100 - avgValue : avgValue;
@@ -674,7 +1173,7 @@ function sliderHTML(key, leftLabel, rightLabel, avgValue, invert) {
     '<div class="slider-label"><span>' + leftLabel + '</span><span>' + rightLabel + '</span></div>' +
     '<div class="slider-track" id="track-' + key + '">' +
       '<div class="slider-avgdot" style="left:' + displayAvg + '%"></div>' +
-      '<div class="slider-handle" id="handle-' + key + '" style="left:' + displayAvg + '%"></div>' +
+      '<div class="slider-handle" id="handle-' + key + '" style="left:' + displayAvg + '%;display:none"></div>' +
     '</div></div>';
 }
 
@@ -697,24 +1196,28 @@ function attachSlider(key) {
   track.addEventListener('pointercancel', () => { dragging = false; });
 }
 
-window.showProfileTab = function (tab) {
-  document.getElementById('tabVibe').style.display = tab === 'vibe' ? 'block' : 'none';
-  document.getElementById('tabDetails').style.display = tab === 'details' ? 'block' : 'none';
-  document.getElementById('tabBtnVibe').classList.toggle('on', tab === 'vibe');
-  document.getElementById('tabBtnDetails').classList.toggle('on', tab === 'details');
+// Sliders start read-only (only the average dot shows) — dragging only becomes possible
+// once "Add your read of the space!" is tapped, per the framework's explicit
+// submission-state toggle (not always-draggable, which is what was built before).
+window.startRatingSubmission = function () {
+  document.getElementById('ratingStartWrap').style.display = 'none';
+  document.getElementById('ratingSubmitForm').style.display = 'block';
+  ['safety', 'crowd', 'welcome'].forEach(key => {
+    document.getElementById('handle-' + key).style.display = 'block';
+    attachSlider(key);
+  });
 };
 
-let audioPlaying = false;
-window.toggleAudio = function () {
-  audioPlaying = !audioPlaying;
-  document.getElementById('playBtn').innerHTML = audioPlaying ? '&#10074;&#10074;' : '&#9654;';
-  const bars = document.querySelectorAll('#waveform div');
-  bars.forEach(b => { b.style.background = audioPlaying ? currentPopsColor() : '#D8D4C8'; });
+window.showProfileTab = function (tab) {
+  document.getElementById('tabHappening').style.display = tab === 'happening' ? 'block' : 'none';
+  document.getElementById('tabSpace').style.display = tab === 'space' ? 'block' : 'none';
+  document.getElementById('tabBtnHappening').classList.toggle('on', tab === 'happening');
+  document.getElementById('tabBtnSpace').classList.toggle('on', tab === 'space');
 };
-function currentPopsColor() { return '#1FBF6B'; }
 
 window.submitVibeRating = async function () {
-  if (!currentPops || !supabase) { window.backToList(); return; }
+  if (!currentPops || !supabase) return;
+  const better = (document.getElementById('betterInput').value || '').trim();
   const row = {
     pops_id: currentPops.id,
     safety: pendingRating.safety, crowd: pendingRating.crowd, welcome: pendingRating.welcome,
@@ -722,57 +1225,58 @@ window.submitVibeRating = async function () {
   };
   await supabase.from('ratings').insert(row);
   await supabase.from('traces').insert({ pops_id: currentPops.id, type: 'rating', lat: row.lat, lng: row.lng });
-  window.backToList();
+  if (better) {
+    await supabase.from('wishes').insert({ pops_id: currentPops.id, tag: better, kind: 'wish' });
+  }
+  window.openProfile(currentPops.id); // refresh in place so the new averages actually show
 };
 
-function renderDetailsTab(p) {
-  const el = document.getElementById('tabDetails');
-  const amenities = p.amenities || [];
-  const amenityIcons = { seating: '&#128265;', wifi: '&#128246;', sun: '&#9728;&#65039;', plug: '&#128268;', armchair: '&#128737;&#65039;', shade: '&#127794;', scenic: '&#127756;', food: '&#127860;' };
+// ---------------- Tab 2: The Space ----------------
+
+function renderSpaceTab(p) {
+  const el = document.getElementById('tabSpace');
+  const amenityWords = [...new Set(
+    [].concat(p.amenities || [], p.amenities_required || [], p.permitted_amenities || [])
+      .filter(a => a && String(a).toLowerCase() !== 'none' && !String(a).toLowerCase().includes('other'))
+  )];
   el.innerHTML =
-    '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:12px 0 8px">Amenities</p>' +
+    '<p class="block-label" style="margin-top:8px">Address</p>' +
+    '<p class="space-detail">' + (p.building_address || 'Not listed') + '</p>' +
+    '<p class="block-label">Hours</p>' +
+    '<p class="space-detail">' + (p.hours || 'Not listed') + '</p>' +
+    '<p class="block-label">Amenities</p>' +
     '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">' +
-      (amenities.length ? amenities.map(a => '<span class="amenity-pill">' + (amenityIcons[a] || '&#9642;') + ' ' + a + '</span>').join('') : '<span class="amenity-pill" style="color:#B0AEA6">None listed yet</span>') +
+      (amenityWords.length
+        ? amenityWords.map(a => {
+            const found = AMENITY_ICON_MAP.find(m => m.match.some(k => a.toLowerCase().includes(k)));
+            return '<span class="amenity-pill">' + (found ? found.icon : '&#9642;') + ' ' + a + '</span>';
+          }).join('')
+        : '<span class="amenity-pill" style="color:#B0AEA6">None listed</span>') +
     '</div>' +
-    '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:0 0 8px">Food nearby</p>' +
-    '<div class="foodimg" style="margin-bottom:16px"></div>' +
-    '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:0 0 8px">What would make this better</p>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px" id="wishCloud">' +
-      (profileWishes.length ? profileWishes.map(w => '<span class="wishtag" onclick="window.tapWish(\'' + w.tag.replace(/'/g, "\\'") + '\')">' + w.tag + ' &middot; ' + w.votes + '</span>').join('') : '<span style="font-family:var(--font-body);font-size:11px;color:#B0AEA6">Nobody has said yet, be first</span>') +
-    '</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:12px">' +
-      '<input id="wishInput" placeholder="Add your own idea" style="flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11px;font-family:var(--font-body)"/>' +
-      '<button onclick="window.addWish()" style="border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:0 12px;font-family:var(--font-body);font-size:11px;cursor:pointer">Add</button>' +
-    '</div>' +
-    '<p style="font-family:var(--font-display);font-size:10.5px;font-weight:700;color:#9A9A94;letter-spacing:0.5px;text-transform:uppercase;margin:0 0 8px">Share your spot</p>' +
-    '<div style="display:flex;gap:8px;margin-bottom:16px">' +
+    '<p class="block-label">Share your spot</p>' +
+    '<div id="mediaGallery" class="media-gallery"></div>' +
+    '<div style="display:flex;gap:10px;margin-bottom:16px">' +
       '<label class="uploadbtn">Add a photo<input type="file" accept="image/*" onchange="window.uploadMedia(this,\'photo\')"/></label>' +
       '<label class="uploadbtn">Add a recording<input type="file" accept="audio/*" onchange="window.uploadMedia(this,\'recording\')"/></label>' +
     '</div>';
+  renderMediaGallery();
 }
 
-window.tapWish = async function (tag) {
-  if (!supabase || !currentPops) return;
-  const { data } = await supabase.from('wishes').select('*').eq('pops_id', currentPops.id).eq('tag', tag).eq('kind', 'wish').maybeSingle();
-  if (data) await supabase.from('wishes').update({ votes: data.votes + 1 }).eq('id', data.id);
-  window.openProfile(currentPops.id);
-  window.showProfileTab('details');
-};
-
-window.addWish = async function () {
-  if (!supabase || !currentPops) return;
-  const input = document.getElementById('wishInput');
-  const val = input.value.trim();
-  if (!val) return;
-  const { data: existing } = await supabase.from('wishes').select('*').eq('pops_id', currentPops.id).eq('tag', val).eq('kind', 'wish').maybeSingle();
-  if (existing) {
-    await supabase.from('wishes').update({ votes: existing.votes + 1 }).eq('id', existing.id);
-  } else {
-    await supabase.from('wishes').insert({ pops_id: currentPops.id, tag: val, kind: 'wish', votes: 1 });
+function renderMediaGallery() {
+  const wrap = document.getElementById('mediaGallery');
+  if (!wrap) return;
+  if (!profileMedia.length) {
+    wrap.innerHTML = '<div class="media-thumb" style="color:#B0AEA6;font-size:11px;width:auto;padding:0 12px">Nothing shared yet</div>';
+    return;
   }
-  window.openProfile(currentPops.id);
-  window.showProfileTab('details');
-};
+  wrap.innerHTML = profileMedia.map(m => {
+    if (m.type === 'photo' && supabase) {
+      const url = supabase.storage.from('photos').getPublicUrl(m.storage_path).data.publicUrl;
+      return '<div class="media-thumb" style="background-image:url(' + url + ')"></div>';
+    }
+    return '<div class="media-thumb">&#127925;</div>';
+  }).join('');
+}
 
 window.uploadMedia = async function (inputEl, type) {
   const file = inputEl.files[0];
@@ -780,9 +1284,41 @@ window.uploadMedia = async function (inputEl, type) {
   const bucket = type === 'photo' ? 'photos' : 'recordings';
   const path = currentPops.id + '/' + Date.now() + '-' + file.name;
   const { error } = await supabase.storage.from(bucket).upload(path, file);
-  if (error) { alert('Upload failed, try again.'); return; }
-  await supabase.from('media').insert({ pops_id: currentPops.id, type, storage_path: path });
-  alert(type === 'photo' ? 'Photo added' : 'Recording added');
+  if (error) { console.error(error); alert('Upload failed, try again.'); return; }
+  const { data: row, error: insertError } = await supabase.from('media').insert({ pops_id: currentPops.id, type, storage_path: path }).select().single();
+  if (insertError) { console.error(insertError); alert('Upload failed, try again.'); return; }
+  profileMedia.unshift(row);
+  renderMediaGallery();
+  inputEl.value = '';
+};
+
+// ---------------- Look Inside / Live Activity ----------------
+
+window.lookInside = function () {
+  if (!currentPops) return;
+  if (currentPops.scan_slug) {
+    window.open('3d-space/?scan=' + currentPops.scan_slug, '_blank');
+  } else {
+    alert('3D space coming soon for ' + currentPops.name + '!');
+  }
+};
+
+window.startLiveActivity = function () {
+  if (!currentPops) return;
+  if (!navigator.geolocation) { alert('Location services are not available on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const meters = distanceMeters(pos.coords.latitude, pos.coords.longitude, currentPops.lat, currentPops.lng);
+      if (meters > LIVE_ACTIVITY_RADIUS_METERS) {
+        alert('You need to be at ' + currentPops.name + ' to post a live activity here.');
+        return;
+      }
+      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      window.openDropPin();
+    },
+    () => { alert('Could not get your location. Enable location access to post a live activity.'); },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
 };
 
 window.backToList = function () {

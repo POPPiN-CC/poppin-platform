@@ -181,6 +181,20 @@ alter table pops add column permitted_amenities text[];
 alter table ratings drop column quiet;
 alter table ratings add column safety int check (safety between 0 and 100);
 
+-- Migration: Phase 5 (profile screen restructure, per FRAMEWORKS/POPPIN_App_Framework.md).
+-- scan_slug links a POPS row to its 3d-space/?scan=<slug> page — null for the 389 real
+-- spaces with no scan, set only on the 3 pilots. "Look Inside" uses this directly instead
+-- of guessing from the name.
+alter table pops add column scan_slug text;
+update pops set scan_slug = 'queensboro-view' where name = 'Queensboro View';
+update pops set scan_slug = 'squirrel-grove' where name = 'Squirrel Grove';
+update pops set scan_slug = 'tata-green' where name = 'Tata Green';
+
+-- category is set only for kind='activity' rows (one of ACTIVITY_CATEGORIES' ids in
+-- index.html) — replaces the earlier keyword-guessing stand-in now that the app actually
+-- has a real submission form asking the user to pick a category.
+alter table wishes add column category text;
+
 -- Seed your pilot POPS here, replace lat/lng with the real coordinates.
 -- Uncomment and edit before running, or add these through the Supabase table editor instead.
 -- insert into pops (name, description, lat, lng, amenities, best_time, hours) values

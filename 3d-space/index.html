@@ -211,12 +211,20 @@ camera.position.set(3, 3, 3);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(appEl.clientWidth, appEl.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 appEl.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+// Polycam's own viewer lights scans much brighter than three.js's defaults do — no shadow
+// maps are enabled anywhere in this scene, so extra lights here cost basically nothing
+// (a few more uniforms per pixel, no extra draw calls or shadow passes).
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
 dirLight.position.set(5, 10, 5);
 scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.9);
+fillLight.position.set(-5, 4, -5);
+scene.add(fillLight);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
