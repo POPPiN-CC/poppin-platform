@@ -872,6 +872,7 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
     // — "Join activity:" label, the activity itself in the script font.
     const liveBubbleHtml = hasLiveActivity
       ? '<span class="pin-live-bubble" style="--bubble-color:' + ringColor + '">Join activity: ' +
+          (meetup.icon ? escapeHtml(meetup.icon) + ' ' : '&#128205; ') +
           '<span class="live-script">' + escapeHtml(meetup.activity) + '</span></span>'
       : '';
     marker.bindPopup(
