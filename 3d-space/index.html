@@ -533,72 +533,71 @@ function addPhotoBillboard(pin) {
   img.src = data.publicUrl;
 }
 
-// A live THREE.VideoTexture billboard turned out to be an unreliable combination on iOS —
-// two rounds of fixes (correct recording format, attaching the <video> to the DOM) still left
-// it frozen/blank on phone, even though the exact same file plays fine in the lightbox's plain
-// <video> element (confirmed). Rather than keep guessing at iOS's undocumented autoplay/
-// WebGL-texture gating, this bakes a single static frame — same reliable single-canvas
-// technique addPhotoBillboard already uses successfully — plus a play icon, and leans on the
-// lightbox (proven to work) for actual playback on tap. No live video decode happens for the
-// billboard itself at all, which is what makes this robust rather than another guess: grabbing
-// one frame for a thumbnail is a far less restricted operation than sustained playback.
+// Video billboards decode nothing at all — third time's the charm by removing the dependency
+// entirely, not guessing at it again. Three approaches to getting the actual footage onto the
+// 3D billboard failed on iOS in a row: live THREE.VideoTexture (frozen), then a DOM-attached
+// live texture (still frozen), then grabbing a single frame off a hidden <video> (blank — iOS
+// evidently won't decode ANY frame data for an off-screen/muted-autoplay-less element, even
+// just to draw once). The exact same files DO play in the lightbox's plain <video controls>
+// (confirmed), so playback works — it's specifically the "feed video into a canvas/WebGL
+// texture" path that iOS blocks. So the billboard is now a purely-drawn placeholder card (a
+// film-strip glyph + play button, no media element created), and tapping it opens the lightbox
+// for the real thing. Synchronous — no load event to wait on — so it can't get stuck.
 function addVideoBillboard(pin) {
-  const { data } = supabaseClient.storage.from('scan-media').getPublicUrl(pin.storagePath);
-  const videoEl = document.createElement('video');
-  videoEl.muted = true;
-  videoEl.playsInline = true;
-  videoEl.crossOrigin = 'anonymous';
-  videoEl.preload = 'auto';
-  videoEl.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px';
-  appEl.appendChild(videoEl);
+  const S = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d');
+  const pad = S * 0.06;
 
-  videoEl.addEventListener('loadeddata', () => {
-    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
-    if (!vw || !vh) return;
-    const border = Math.round(Math.max(vw, vh) * 0.04);
-    const canvas = document.createElement('canvas');
-    canvas.width = vw + border * 2;
-    canvas.height = vh + border * 2;
-    const ctx = canvas.getContext('2d');
-    ctx.shadowColor = MEDIA_FRAME_SHADOW;
-    ctx.shadowBlur = border * 1.4;
-    ctx.shadowOffsetY = border * 0.5;
-    ctx.fillStyle = MEDIA_FRAME_COLOR;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.shadowColor = 'transparent';
-    ctx.drawImage(videoEl, border, border, vw, vh);
+  // White card with the same soft drop-shadow border as photos, so it sits in the scene the
+  // same way (a flat white fill would vanish against the white scene background).
+  ctx.shadowColor = MEDIA_FRAME_SHADOW;
+  ctx.shadowBlur = S * 0.05;
+  ctx.shadowOffsetY = S * 0.02;
+  ctx.fillStyle = MEDIA_FRAME_COLOR;
+  ctx.fillRect(pad, pad, S - pad * 2, S - pad * 2);
+  ctx.shadowColor = 'transparent';
 
-    // Play-button affordance so the still frame reads as "tap to play," not just a photo.
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const r = Math.min(vw, vh) * 0.16;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fill();
-    ctx.beginPath();
-    const t = r * 0.85;
-    ctx.moveTo(cx - t * 0.35, cy - t * 0.55);
-    ctx.lineTo(cx - t * 0.35, cy + t * 0.55);
-    ctx.lineTo(cx + t * 0.65, cy);
-    ctx.closePath();
-    ctx.fillStyle = '#fff';
-    ctx.fill();
+  // Dark inner panel so the card reads as "a video" (the pin's caption still shows in the
+  // lightbox on tap — no need to duplicate it on the small billboard).
+  const ix = pad * 1.6, iy = pad * 1.6;
+  ctx.fillStyle = '#2A2A28';
+  ctx.fillRect(ix, iy, S - ix * 2, S - iy * 2);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
-    sprite.renderOrder = 1;
-    sprite.position.set(pin.x, pin.y, pin.z);
-    sprite.userData.pin = pin;
-    const h = MEDIA_BILLBOARD_HEIGHT;
-    sprite.scale.set(h * (canvas.width / canvas.height), h, 1);
-    scene.add(sprite);
-    pinMarkers.push(sprite);
+  // Play button.
+  const cx = S / 2, cy = S / 2, r = S * 0.13;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fill();
+  ctx.beginPath();
+  const t = r * 0.8;
+  ctx.moveTo(cx - t * 0.35, cy - t * 0.55);
+  ctx.lineTo(cx - t * 0.35, cy + t * 0.55);
+  ctx.lineTo(cx + t * 0.65, cy);
+  ctx.closePath();
+  ctx.fillStyle = '#2A2A28';
+  ctx.fill();
 
-    videoEl.remove(); // thumbnail's baked into the texture now, done with the element itself
-  }, { once: true });
-  videoEl.addEventListener('error', (err) => console.error('Video pin failed to load', pin.id, err));
-  videoEl.src = data.publicUrl;
+  // "Tap to play" label under the button.
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '600 30px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Tap to play', cx, cy + r + 34);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+  sprite.renderOrder = 1;
+  sprite.position.set(pin.x, pin.y, pin.z);
+  sprite.userData.pin = pin;
+  const h = MEDIA_BILLBOARD_HEIGHT;
+  sprite.scale.set(h, h, 1);
+  scene.add(sprite);
+  pinMarkers.push(sprite);
 }
 
 function addPinToScene(pin) {

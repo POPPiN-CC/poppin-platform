@@ -76,9 +76,29 @@
   .leaflet-popup-content{margin:0;width:220px !important}
   .pin-preview{display:flex;flex-direction:column;cursor:pointer;font-family:var(--font-body)}
   .pin-preview .pin-preview-photo{height:90px;background:#E9E7E1;border-radius:14px 14px 0 0;background-size:cover;background-position:center;position:relative}
-  .pin-live-pill{position:absolute;top:6px;left:6px;max-width:calc(100% - 12px);box-sizing:border-box;
-    color:#fff;font-family:var(--font-body);font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+  /* Live activity as a speech bubble floating above the pin preview (outside the card), its tail
+     pointing down into the window. bottom:100% on the photo's own box puts the bubble's bottom
+     edge flush with the photo's top edge; the tail (::after, offset further below) bridges the
+     gap so it reads as pointing into the card rather than sitting on top of it. Text wraps (no
+     ellipsis) so no overflow:hidden is needed anywhere in the ancestor chain — which is what lets
+     the bubble and its tail render outside the photo box instead of being clipped. One inline
+     --bubble-color (the activity's category color) drives the fill, the tail, and the pulse ring
+     together. */
+  .pin-live-bubble{position:absolute;bottom:100%;margin-bottom:6px;left:8px;max-width:calc(100% - 16px);box-sizing:border-box;
+    background:var(--bubble-color,#1FBF6B);color:#fff;font-family:var(--font-body);font-size:10px;
+    font-weight:600;line-height:1.3;padding:5px 10px;border-radius:12px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.3);animation:liveBubblePulse 1.5s ease-out infinite}
+  .pin-live-bubble .live-script{font-family:var(--font-script);font-size:14px;vertical-align:-1px}
+  .pin-live-bubble::after{content:'';position:absolute;left:16px;bottom:-6px;width:0;height:0;
+    border-left:6px solid transparent;border-right:6px solid transparent;
+    border-top:7px solid var(--bubble-color,#1FBF6B)}
+  /* Ring pulses outward from the bubble (like the map pin) — box-shadow, so overflow can't clip
+     it; static drop shadow kept in each keyframe so only the colored ring animates. 70%->100%
+     holds transparent for the rest-beat between pulses. */
+  @keyframes liveBubblePulse{
+    0%{box-shadow:0 2px 6px rgba(0,0,0,0.3),0 0 0 0 color-mix(in srgb, var(--bubble-color,#1FBF6B) 55%, transparent)}
+    70%,100%{box-shadow:0 2px 6px rgba(0,0,0,0.3),0 0 0 10px transparent}
+  }
   .pin-preview .pin-preview-body{padding:10px 12px}
   .pin-preview .pin-preview-name{font-family:var(--font-display);font-weight:700;font-size:13px;margin:0;color:var(--ink)}
   .pin-preview .pin-preview-meta{font-size:11px;color:var(--muted);margin:3px 0 0}
@@ -167,6 +187,8 @@
     padding:12px;margin-bottom:16px;overflow:hidden}
   .live-banner-photo{height:100px;background-size:cover;background-position:center;
     border-radius:10px;margin:-12px -12px 10px}
+  .live-banner-label{font-family:var(--font-display);font-weight:700;font-size:10px;letter-spacing:0.04em;
+    text-transform:uppercase;color:var(--green-text);margin:0 0 3px}
   .live-banner-title{font-family:var(--font-display);font-weight:700;font-size:14px;margin:0;color:var(--ink)}
   .live-banner-time{margin-left:auto;font-family:var(--font-body);font-size:10px;color:var(--green-text);white-space:nowrap}
   .live-banner-msg{font-family:var(--font-script);font-size:16px;color:#4A4436;margin:0 0 10px}
@@ -845,16 +867,16 @@ function renderMapMarkers(list, activityTagsByPops, recentlyActiveSet) {
       : '<span style="color:#B0AEA6">Nothing logged yet</span>';
     const photoUrl = streetviewUrl(p);
     const photoStyle = photoUrl ? ' style="background-image:url(\'' + photoUrl + '\')"' : '';
-    // Live activity gets a little pill over the photo, tinted the same category color as the
-    // pin's pulse, so a passing tap on the pin surfaces what's happening without opening the
-    // full profile.
-    const livePillHtml = hasLiveActivity
-      ? '<span class="pin-live-pill" style="background:' + meetupColor(meetup) + '">' +
-          (meetup.icon ? meetup.icon + ' ' : '') + escapeHtml(meetup.activity) + '</span>'
+    // Live activity as a speech bubble on the photo, tinted the category color (--bubble-color,
+    // same value as the pin's own pulse ringColor above) with a tail pointing into the window
+    // — "Join activity:" label, the activity itself in the script font.
+    const liveBubbleHtml = hasLiveActivity
+      ? '<span class="pin-live-bubble" style="--bubble-color:' + ringColor + '">Join activity: ' +
+          '<span class="live-script">' + escapeHtml(meetup.activity) + '</span></span>'
       : '';
     marker.bindPopup(
       '<div class="pin-preview" onclick="window.openProfile(\'' + p.id + '\')">' +
-        '<div class="pin-preview-photo"' + photoStyle + '>' + livePillHtml + '</div>' +
+        '<div class="pin-preview-photo"' + photoStyle + '>' + liveBubbleHtml + '</div>' +
         '<div class="pin-preview-body">' +
           '<p class="pin-preview-name">' + p.name + '</p>' +
           '<p class="pin-preview-meta">' + metaHtml + '</p>' +
@@ -1168,6 +1190,7 @@ async function renderLiveActivityBanner(p) {
   wrap.innerHTML =
     '<div class="live-banner">' +
       (thumbUrl ? '<div class="live-banner-photo" style="background-image:url(' + thumbUrl + ')"></div>' : '') +
+      '<p class="live-banner-label">Join activity</p>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
         (m.icon ? '<span style="font-size:18px">' + m.icon + '</span>' : '<span style="font-size:14px">&#128205;</span>') +
         '<p class="live-banner-title">' + m.activity + '</p>' +
