@@ -58,8 +58,10 @@
   .filter-chip.on{border-color:var(--green);background:var(--green-tint);color:var(--green-text)}
 
   /* Draggable bottom sheet — position is driven by JS setting `top` in px (not transform),
-     snapped to one of three fractions of #listView's height on release. */
-  #listSheet{position:absolute;left:0;right:0;bottom:0;z-index:450;background:#fff;
+     snapped to one of three fractions of #listView's height on release. z-index is above
+     .map-overlay-top (500) so that at the 'full' snap, the sheet (and its drag handle) render
+     over the header instead of being hidden/unreachable underneath it. */
+  #listSheet{position:absolute;left:0;right:0;bottom:0;z-index:550;background:#fff;
     border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,0.14);
     display:flex;flex-direction:column;overflow:hidden}
   .sheet-handle-wrap{padding:10px 0 4px;display:flex;justify-content:center;cursor:grab;touch-action:none;flex-shrink:0}
